@@ -255,6 +255,14 @@
   .fileBtn input { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
   .toolTip { font-size: 12px; color: var(--muted); line-height: 1.6; }
   .ptProg { font-size: 12px; color: var(--accent); font-family: var(--mono); font-variant-numeric: tabular-nums; }
+  .oriChips { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+  .oriChip {
+    padding: 3px 9px; border: 1px solid var(--border); border-radius: 999px;
+    font-size: 12px; font-family: var(--mono); color: var(--muted); user-select: none;
+  }
+  .oriChip.done { background: rgba(5,150,105,.12); border-color: var(--green); color: var(--green); }
+  .oriChip.next { border-color: var(--accent); color: var(--accent); cursor: pointer; }
+  .oriChip.next:hover { background: rgba(2,132,199,.08); }
   #ptList { max-height: 170px; overflow-y: auto; }
   .ptItem {
     display: flex; align-items: center; gap: 8px; padding: 7px 12px;
@@ -516,7 +524,8 @@
         <h2>测点详情 <span class="val" id="ptTime"></span></h2>
         <div id="ptDetail" class="ptDetail"><div class="empty">点击地图上的圆点查看该点传感器数据</div></div>
         <div class="detailBtns">
-          <button class="btn" id="btnUpdPt" disabled>重新采样</button>
+          <button class="btn" id="btnStay" disabled>开始停留</button>
+          <button class="btn" id="btnResetScan" disabled>重置采样</button>
           <button class="btn danger" id="btnDelPt" disabled>删除该点</button>
         </div>
       </div>
@@ -573,7 +582,7 @@ function onImu(d) {
   // 磁场水平分量的罗盘方位(机体系: x前 y右; 实测校验 mx≈1,my≈31 → 272°, 与 yaw -89° 吻合)
   const heading = (Math.atan2(-my, mx) * 180 / Math.PI + 360) % 360;
   $("magDir").textContent = "磁场罗盘方位 " + heading.toFixed(0) + "°";
-  if (collectingN) tapCollect("imu", { t: Date.now(), yaw: d.yaw, pitch: d.pitch, roll: d.roll, mag: tgt.mag.slice() });
+  if (collectingN) tapCollect({ t: Date.now(), yaw: tgt.yaw, pitch: d.pitch, roll: d.roll, mag: tgt.mag.slice() });
 }
 
 function onRssi(d) {
@@ -589,7 +598,7 @@ function onRssi(d) {
   }
   renderApTable(aps);
   renderChart(aps);
-  if (collectingN) tapCollect("wifi", { t: Date.now(), aps: aps.map(a => ({ name: a.name, rssi: a.rssi })) });
+  // WiFi 扫描改为到点后按键手动采集(每点 4 条: 0°/90°/180°/270° 各 1 条)
 }
 
 function rssiColor(r) {
@@ -1150,21 +1159,19 @@ function addPointAt(wx, wy) {
     nWifi: Math.max(0, +$("defWifiN").value | 0),
     imuSamples: [], wifiScans: [], collecting: false,
   };
-  setCollecting(p, p.nImu > 0 || p.nWifi > 0);
+  setCollecting(p, p.nImu > 0);
   mapPoints.push(p);
   selPointId = p.id;
   persist(); renderMarkers(); renderPtList(); renderDetail();
 }
-function tapCollect(kind, payload) {   // 由 onImu / onRssi 调用, 分发给采集中的测点
+function tapCollect(payload) {   // 由 onImu 调用: 停留期间连续记录磁力计; WiFi 扫描由按键手动采集
   let dirty = false;
   for (const p of mapPoints) {
     if (!p.collecting) continue;
-    if (kind === "imu" && (p.nImu | 0) > 0 && p.imuSamples.length < (p.nImu | 0)) {
+    if ((p.nImu | 0) > 0 && p.imuSamples.length < (p.nImu | 0)) {
       p.imuSamples.push(payload); dirty = true;
-    } else if (kind === "wifi" && (p.nWifi | 0) > 0 && p.wifiScans.length < (p.nWifi | 0)) {
-      p.wifiScans.push(payload); dirty = true;
     }
-    if (p.imuSamples.length >= (p.nImu | 0) && p.wifiScans.length >= (p.nWifi | 0)) {
+    if (p.imuSamples.length >= (p.nImu | 0)) {
       setCollecting(p, false);
       p.time = nowStr();
       if (p.id === selPointId) renderDetail();
@@ -1332,7 +1339,8 @@ function wifiAvg(p) {
 function renderDetail() {
   const box = $("ptDetail");
   const p = pointById(selPointId);
-  $("btnUpdPt").disabled = !p;
+  $("btnStay").disabled = !p;
+  $("btnResetScan").disabled = !p;
   $("btnDelPt").disabled = !p;
   if (!p) {
     box.innerHTML = '<div class="empty">点击地图上的圆点查看该点传感器数据</div>';
@@ -1341,7 +1349,15 @@ function renderDetail() {
   }
   $("ptTime").textContent = p.time || "";
   const ia = imuAvg(p), wa = wifiAvg(p);
-  const f1 = v => (typeof v === "number" && isFinite(v) ? v.toFixed(1) : "--");
+  const nw = p.nWifi | 0, done = (p.wifiScans || []).length;
+  const chips = [];
+  for (let k = 0; k < nw; k++) {
+    const ori = (k % 4) * 90;
+    const isDone = k < done;
+    chips.push(`<span class="oriChip${isDone ? " done" : (k === done ? " next" : "")}"
+      data-k="${k}">${ori}°${isDone ? " ✓" : ""}</span>`);
+  }
+  const f1d = v => (typeof v === "number" && isFinite(v) ? v.toFixed(1) : "--");
   const b = ia ? Math.hypot(ia.mx, ia.my, ia.mz).toFixed(2) : "--";
   const apRows = (wa && wa.length)
     ? wa.map(a => {
@@ -1360,12 +1376,17 @@ function renderDetail() {
     <div class="frmRow"><span class="frmLab">存储 WiFi 扫描次数</span>
       <input id="ptNWifi" class="txt" type="number" min="0" step="1" value="${p.nWifi | 0}"></div>
     <div class="ptProg" id="ptProg">${p.collecting
-      ? "采集中 " + progText(p)
-      : `已存 IMU ${(p.imuSamples || []).length} 条 · WiFi ${(p.wifiScans || []).length} 次扫描`}</div>
+      ? "停留采集中 " + progText(p)
+      : `已存 IMU ${(p.imuSamples || []).length} 条 · WiFi ${(p.wifiScans || []).length}/${p.nWifi | 0} 条`}</div>
+    <div class="oriChips">${chips}</div>
+    <button class="btn primary" id="btnCapScan" style="width:100%"
+      ${done >= nw ? "disabled" : ""}>${done >= nw
+        ? `已完成 ${done}/${nw} 条扫描`
+        : `采集扫描（朝向 ${(done % 4) * 90}°）`}</button>
     <div class="ptGrid">
-      <div class="stat"><div class="k">Yaw 均值</div><div class="v">${f1(ia && ia.yaw)}°</div></div>
-      <div class="stat"><div class="k">Pitch 均值</div><div class="v">${f1(ia && ia.pitch)}°</div></div>
-      <div class="stat"><div class="k">Roll 均值</div><div class="v">${f1(ia && ia.roll)}°</div></div>
+      <div class="stat"><div class="k">Yaw 均值</div><div class="v">${f1d(ia && ia.yaw)}°</div></div>
+      <div class="stat"><div class="k">Pitch 均值</div><div class="v">${f1d(ia && ia.pitch)}°</div></div>
+      <div class="stat"><div class="k">Roll 均值</div><div class="v">${f1d(ia && ia.roll)}°</div></div>
       <div class="stat"><div class="k">|B| 均值</div><div class="v">${b} µT</div></div>
     </div>
     <table class="ptAp"><tbody>${apRows}</tbody></table>`;
@@ -1376,23 +1397,43 @@ function renderDetail() {
   };
   $("ptNImu").onchange = e => {
     p.nImu = Math.max(0, +e.target.value | 0);
-    setCollecting(p, p.imuSamples.length < p.nImu || p.wifiScans.length < p.nWifi);
+    setCollecting(p, p.imuSamples.length < p.nImu);
     persist(); renderMarkers();
   };
   $("ptNWifi").onchange = e => {
     p.nWifi = Math.max(0, +e.target.value | 0);
-    setCollecting(p, p.imuSamples.length < p.nImu || p.wifiScans.length < p.nWifi);
-    persist(); renderMarkers();
+    persist(); renderMarkers(); renderDetail();
   };
+  const capBtn = $("btnCapScan");
+  if (capBtn && done < nw) capBtn.onclick = () => captureScan(p, (done % 4) * 90);
+  const nextChip = box.querySelector(".oriChip.next");
+  if (nextChip) nextChip.onclick = () => captureScan(p, (done % 4) * 90);
 }
 
-$("btnUpdPt").onclick = () => {
+/* 手动按键采集: 每按一次 = 1 条扫描, 朝向按 0°→90°→180°→270° 顺序标记 */
+function captureScan(p, ori) {
+  if ((p.wifiScans || []).length >= (p.nWifi | 0)) { alert("该点已完成全部 " + p.nWifi + " 条扫描"); return; }
+  if (!lastAps.length) { alert("暂无 WiFi 扫描数据, 请确认设备已推送 RSSI 后再按"); return; }
+  ori = ((Math.round(ori) % 360) + 360) % 360;
+  p.wifiScans.push({ t: Date.now(), yaw: tgt.yaw, ori,
+    aps: lastAps.map(a => ({ name: a.name, rssi: a.rssi })) });
+  p.time = nowStr();
+  persist();
+  renderDetail(); renderMarkers();
+  updateCollectBadges();
+}
+
+$("btnStay").onclick = () => {
   const p = pointById(selPointId);
   if (!p) return;
-  if ($("ptNImu")) p.nImu = Math.max(0, +$("ptNImu").value | 0);
-  if ($("ptNWifi")) p.nWifi = Math.max(0, +$("ptNWifi").value | 0);
+  setCollecting(p, !p.collecting && (p.nImu | 0) > 0);
+  persist(); renderDetail(); renderMarkers();
+};
+$("btnResetScan").onclick = () => {
+  const p = pointById(selPointId);
+  if (!p) return;
   p.imuSamples = []; p.wifiScans = [];
-  setCollecting(p, p.nImu > 0 || p.nWifi > 0);
+  setCollecting(p, (p.nImu | 0) > 0);
   persist(); renderDetail(); renderMarkers();
 };
 
@@ -1537,11 +1578,13 @@ $("btnExportRaw").onclick = () => {   // 逐条: 每条 IMU 采样 / 每次 WiFi
     });
   });
   lines.push("", "[WiFi逐条数据]",
-    ["编号", "名称", "扫描#", "时间", "AP名称", "RSSI(dBm)"].map(csvEsc).join(","));
+    ["编号", "名称", "扫描#", "朝向(°)", "时间", "AP名称", "RSSI(dBm)"].map(csvEsc).join(","));
   mapPoints.forEach((p, i) => {
     (p.wifiScans || []).forEach((sc, j) => {
       for (const a of (sc.aps || []))
-        lines.push([i + 1, p.name, j + 1, fmtT(sc.t), a.name, a.rssi].map(csvEsc).join(","));
+        lines.push([i + 1, p.name, j + 1,
+          typeof sc.ori === "number" ? sc.ori : "",
+          fmtT(sc.t), a.name, a.rssi].map(csvEsc).join(","));
     });
   });
   downloadCsv(lines, "map_raw_");
