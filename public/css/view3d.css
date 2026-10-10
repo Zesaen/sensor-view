@@ -2,7 +2,7 @@
   /* 三维视角容器: 覆盖整个 mapWrap, 与 2D 画布互斥显示 */
   #map3dWrap { position: absolute; inset: 0; display: none; background: #e9ecef; }
   #map3d { position: absolute; inset: 0; }
-  #walkBar { position: absolute; right: 10px; top: 10px; z-index: 5; }
+  #walkBar { position: absolute; right: 10px; top: 10px; z-index: 5; display: flex; gap: 8px; }
   #walkHint {
     position: absolute; left: 50%; top: 12px; transform: translateX(-50%); z-index: 6;
     background: #23272e; color: #fff; border: 1px solid #101317;

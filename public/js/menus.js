@@ -21,12 +21,12 @@ const MENUS = [
     { t: "删除地图", needMap: 1, act: () => curMap && deleteMapById(curMap.id) },
   ]},
   { t: "编辑(E)", items: () => [
-    { t: "撤销上一笔", needMap: 1, act: () => $("btnUndoDraw").click() },
-    { t: "撤销上一点", needMap: 1, act: () => $("btnUndoPt").click() },
+    { t: "撤销上一笔", k: "Ctrl+Z", needMap: 1, act: () => $("btnUndoDraw").onclick() },
+    { t: "撤销上一点", needMap: 1, act: undoLastPoint },
     "-",
     { t: "删除选中图形", needMap: 1, act: () => { if (selShape) $("btnShapeDel").click(); } },
-    { t: "清空全部图形", needMap: 1, act: () => $("btnClearDraw").click() },
-    { t: "清除全部坐标点", needMap: 1, act: () => $("btnClearPts").click() },
+    { t: "清空全部图形", needMap: 1, act: clearAllDrawings },
+    { t: "清除全部坐标点", needMap: 1, act: clearAllPoints },
     "-",
     { t: "管理采集数据库…", act: () => dbOpen("") },
   ]},
@@ -41,7 +41,7 @@ const MENUS = [
       "-",
       { t: "删除当前层", needMap: 1, act: () => delFloor(curFloorId) },
     ]},
-    { t: "重置视图(缩放/平移)", needMap: 1, act: () => $("btnResetView").click() },
+    { t: "重置视图(缩放/平移)", needMap: 1, act: () => fitView() },
     { t: "显示", sub: [
       { t: "背景栅格", chk: "gridOnIn" },
       { t: "细网格线", chk: "gridMinorIn" },
@@ -62,8 +62,11 @@ const MENUS = [
     "-",
     { t: "设置(0,0)原点", tool: "origin", needMap: 1, act: () => $("btnOrigin").click() },
     "-",
+    { t: "模板", needMap: 1, sub: tplMenuItems },
+    { t: "存当前为模板…", needMap: 1, act: tplSave },
+    "-",
     { t: "上传地图图片…", needMap: 1, act: () => $("mapFile").click() },
-    { t: "恢复网格底图", needMap: 1, off: !mapHasImage, act: () => $("btnGridBg").click() },
+    { t: "恢复网格底图", needMap: 1, off: !mapHasImage, act: () => restoreGridBg() },
   ]},
   { t: "数据(A)", items: () => [
     { t: "开始采集", act: () => $("btnStart").click() },
@@ -169,7 +172,7 @@ function showHelpDlg() {
   msgDlg("操作说明", `
     <p><b>主页</b>: 新建 / 导入 / 打开地图; 点击最近地图卡片进入编辑。</p>
     <p><b>地图编辑</b>: 左键/中键拖动平移, 滚轮缩放; 墙/桌/座椅/楼梯/电梯对角拖拽, 门拖方向线, 圆点/路由器/(0,0)点击放置; 座椅选中后可「旋转朝向」, 楼梯选中后可「调转上楼方向」, 路由器(AP)选中后可设「安装高度」(悬挂式); 阵列放点: 点起点→点终点按个数均布; 点击图形选中编辑, 点击测点查看数据。</p>
-    <p><b>三维视角</b>: 地图页顶栏「三维视角」按钮进入/退出; 左键拖动旋转, 右键/双指平移, 滚轮缩放。墙体/桌/座椅/楼梯/电梯/门/路由器/测点按真实比例(1 格 = 1 米)立体呈现, 楼梯沿上行方向逐级升高一整层, 电梯为井道框架, AP 按设定高度悬挂。</p>
+    <p><b>三维视角</b>: 菜单「视图 → 三维视角」进入; 右上角「返回二维编辑」或 Esc 退出; 左键拖动旋转, 右键/双指平移, 滚轮缩放。墙体/桌/座椅/楼梯/电梯/门/路由器/测点按真实比例(1 格 = 1 米)立体呈现, 楼梯沿上行方向逐级升高一整层, 电梯为井道框架, AP 按设定高度悬挂。</p>
     <p><b>多楼层</b>: 地图画布上方楼层条 — 「＋上层 / ＋下层」以当前层布局为模板新建上/下楼(测点不复制), 点击层标签(1F/B1/2F…)切换编辑层, × 删除该层。楼梯在 3D 中总升高一整层(3 m), 逐层对齐即可贯通上下楼; 三维视角里整栋楼按层堆叠, 当前编辑层实体高亮, 其余层半透明。</p>
     <p><b>采集</b>: 选中测点后按「采集」, 每按一次采一个朝向, 按 0°→90°→180°→270° 共 4 次; 样本实时写入服务器 SQLite。</p>
     <p><b>菜单</b>: 顶部为工业软件式多级菜单(文件/编辑/视图/绘图/数据/帮助); Esc 关闭菜单或取消阵列起点; Ctrl+O 回主页, Ctrl+S 导出当前地图到本地。</p>`);

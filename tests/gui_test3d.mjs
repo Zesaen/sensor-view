@@ -158,12 +158,15 @@ check("map.json 已保存 stairs/lifts", Array.isArray(saved.data.stairs) && sav
   Array.isArray(saved.data.lifts) && saved.data.lifts.length > 0,
   `stairs=${saved.data.stairs.length} lifts=${saved.data.lifts.length}`);
 
-// ---- 三维视角 ----
-await clickSel("#btn3dView");
+// ---- 三维视角(入口已收进「视图」菜单) ----
+await evalJs(`[...document.querySelectorAll('#mbar .mtop')][2].querySelector('button').click()`);
+await sleep(200);
+await evalJs(`[...document.querySelectorAll('#mbar .dd .ddItem')].find(el => el.textContent.includes('三维视角')).click()`);
 await sleep(2500);
-check("进入三维视角(2D 隐藏/3D 显示)", await evalJs("document.querySelector('#map3dWrap').style.display") === "block" &&
+check("菜单进入三维视角(2D 隐藏/3D 显示)", await evalJs("document.querySelector('#map3dWrap').style.display") === "block" &&
   await evalJs("document.querySelector('#mapStage').style.display") === "none");
-check("按钮切换为返回二维", (await evalJs("document.querySelector('#btn3dView').textContent")).includes("返回二维"));
+check("3D 右上角返回按钮可见", await evalJs(`document.querySelector('#btn3dView').offsetParent !== null &&
+  document.querySelector('#btn3dView').textContent.includes('返回二维')`));
 await shot("3d-view-on");
 // 拖动旋转一下视角再截一张
 const w3 = await evalJs("[document.querySelector('#map3dWrap').clientWidth, document.querySelector('#map3dWrap').clientHeight]");
@@ -180,6 +183,10 @@ check("Esc 返回二维编辑", await evalJs("document.querySelector('#map3dWrap
 // ---- 菜单项存在性 ----
 check("绘图菜单含楼梯/电梯项", await evalJs("MENUS[3].items().some(i => i.t === '放置楼梯') && MENUS[3].items().some(i => i.t === '放置电梯')"));
 check("视图菜单含三维视角项", await evalJs("MENUS[2].items().some(i => i.t === '三维视角')"));
+check("工具栏已收敛(危险/低频按钮移入菜单)", await evalJs(`document.querySelector('#btnWall') && document.querySelector('#btnUndoDraw') &&
+  !document.querySelector('#btnClearDraw') && !document.querySelector('#btnClearPts') &&
+  !document.querySelector('#btnResetView') && !document.querySelector('#btnGridBg') && !document.querySelector('#tplSel')`) !== null);
+check("绘图菜单含模板项", await evalJs("MENUS[3].items().some(i => i.t === '存当前为模板…') && MENUS[3].items().some(i => i.t === '模板')"));
 
 console.log("\nconsole errors:", consoleErrors.length ? consoleErrors : "(无)");
 const fails = results.filter(r => !r.ok).length;

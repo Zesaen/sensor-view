@@ -167,7 +167,7 @@ $("mapFile").addEventListener("change", async e => {
   e.target.value = "";
 });
 
-$("btnGridBg").onclick = async () => {
+async function restoreGridBg() {   // 「绘图」菜单: 去掉图片底图, 恢复网格底图
   if (!curMap) return;
   mapHasImage = false;
   mapImgNatural = [0, 0];

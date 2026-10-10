@@ -1,19 +1,15 @@
-// 绘图模板(服务器端存取)
+// 绘图模板(服务器端存取, 入口在「绘图」菜单)
 /* ---- 绘图模板(墙/门/桌组合, 存服务器) ---- */
 let templates = [];
 async function loadTemplates() {
   const t = await api("/api/map/templates");
   templates = Array.isArray(t) ? t : [];
-  renderTplSel();
 }
-function renderTplSel() {
-  $("tplCount").textContent = templates.length + " 个";
-  $("tplSel").innerHTML = templates.length
-    ? templates.map((t, i) =>
-        `<option value="${i}">${escH(t.name)}（墙${(t.walls || []).length}/门${(t.doors || []).length}/桌${(t.tables || []).length}/椅${(t.chairs || []).length}/梯${((t.stairs || []).length + (t.lifts || []).length)}/路由${(t.routers || []).length}）</option>`).join("")
-    : '<option value="">暂无模板</option>';
+function tplLabel(t) {
+  return `${t.name}（墙${(t.walls || []).length}/门${(t.doors || []).length}/桌${(t.tables || []).length}` +
+         `/椅${(t.chairs || []).length}/梯${((t.stairs || []).length + (t.lifts || []).length)}/路由${(t.routers || []).length}）`;
 }
-$("btnTplSave").onclick = async () => {
+async function tplSave() {
   if (!walls.length && !doors.length && !tables.length && !chairs.length && !stairs.length && !lifts.length && !routers.length) { alert("当前没有墙/门/桌/座椅/楼梯/电梯可保存"); return; }
   const name = prompt("模板名称:", "布局1");
   if (!name || !name.trim()) return;
@@ -22,10 +18,9 @@ $("btnTplSave").onclick = async () => {
   }), "application/json");
   if (res && res.ok) loadTemplates();
   else alert("模板保存失败");
-};
-$("btnTplApply").onclick = () => {
-  const t = templates[+$("tplSel").value];
-  if (!t) { alert("请先选择模板"); return; }
+}
+function tplApply(t) {
+  if (!t) return;
   if (!confirm(`用模板「${t.name}」替换当前全部墙/门/桌/楼梯/电梯?`)) return;
   walls = JSON.parse(JSON.stringify(t.walls || []));
   doors = JSON.parse(JSON.stringify(t.doors || []));
@@ -37,12 +32,20 @@ $("btnTplApply").onclick = () => {
   undoStack = [];
   selShape = null; updateShapeCtl();
   persist(); renderDrawings();
-};
-$("btnTplDel").onclick = async () => {
-  const t = templates[+$("tplSel").value];
-  if (!t) { alert("请先选择模板"); return; }
+}
+async function tplDel(t) {
+  if (!t) return;
   if (!confirm(`删除模板「${t.name}」?`)) return;
   const res = await apiPost("/api/map/templates",
     JSON.stringify({ action: "del", name: t.name }), "application/json");
   if (res && res.ok) loadTemplates();
-};
+}
+function tplMenuItems() {          // 「绘图」菜单的模板区(每次打开按最新列表生成)
+  const tpls = templates.slice().sort((a, b) => (b.time || "").localeCompare(a.time || ""));
+  if (!tpls.length) return [{ t: "（暂无模板, 先「存当前为模板」）", off: true }];
+  return [
+    ...tpls.map(t => ({ t: "应用 " + tplLabel(t), act: () => tplApply(t) })),
+    "-",
+    ...tpls.map(t => ({ t: `删除「${t.name}」`, act: () => tplDel(t) })),
+  ];
+}

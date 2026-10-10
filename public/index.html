@@ -224,7 +224,10 @@
             <div class="lg"><span class="sw" style="background:#0047ab"></span>蓝柱 = 测点</div>
             <div class="lg"><span class="sw" style="background:#dfe3e8;opacity:.45"></span>半透明 = 其他楼层</div>
           </div>
-          <div id="walkBar"><button class="btn primary" id="btnWalk" title="进入沉浸漫游: WASD 行走 / 鼠标转视角 / Esc 退出">沉浸漫游</button></div>
+          <div id="walkBar">
+            <button class="btn" id="btn3dView" title="返回 2D 编辑视图">返回二维编辑</button>
+            <button class="btn primary" id="btnWalk" title="进入沉浸漫游: WASD 行走 / 鼠标转视角 / Esc 退出">沉浸漫游</button>
+          </div>
           <div id="walkHint">WASD 移动 · Shift 疾跑 · 鼠标 转视角 · Esc 退出</div>
         </div>
       </div>
@@ -266,6 +269,12 @@
       <div class="tbSep"></div>
       <div class="tbGroup">
         <button class="btn" id="btnAddPoint" title="点击地图放测点; 放点后不自动采样, 选中测点后按「采集」按键采集, 每按一次采一个朝向, 按 0°→90°→180°→270° 顺序共 4 次">添加坐标点</button>
+        <button class="btn" id="btnArray" title="阵列放点: 开启时若已选中测点则以它为起点, 否则第一次点击定起点; 移动鼠标实时预览, 第二次点击定终点, 按设定个数在起点→终点间均匀布点(含两端); 右键或 Esc 取消起点">阵列放点</button>
+        <span class="tbLab">个数</span>
+        <input type="number" id="arrNIn" class="txt tbTxt" min="2" max="200" step="1" value="4">
+      </div>
+      <div class="tbSep"></div>
+      <div class="tbGroup">
         <button class="btn" id="btnWall" title="按对角拖出实体矩形墙; 再点一次本按钮退出该模式">绘制墙体</button>
         <button class="btn" id="btnDoor" title="拖出门洞方向, 门叶画在拖动方向左侧">放置门</button>
         <button class="btn" id="btnTable" title="按对角拖出矩形桌">放置桌</button>
@@ -277,15 +286,7 @@
       </div>
       <div class="tbSep"></div>
       <div class="tbGroup">
-        <button class="btn" id="btnArray" title="阵列放点: 开启时若已选中测点则以它为起点, 否则第一次点击定起点; 移动鼠标实时预览, 第二次点击定终点, 按设定个数在起点→终点间均匀布点(含两端); 右键或 Esc 取消起点">阵列放点</button>
-        <span class="tbLab">个数</span>
-        <input type="number" id="arrNIn" class="txt tbTxt" min="2" max="200" step="1" value="4">
-      </div>
-      <div class="tbSep"></div>
-      <div class="tbGroup">
         <button class="btn" id="btnUndoDraw" title="撤销最近一次绘制/放点(阵列按整批撤销)">撤销上一笔</button>
-        <button class="btn" id="btnUndoPt" title="删除最后一个测点; 已采到数据的点会先确认">撤销上一点</button>
-        <button class="btn" id="btnResetView" title="缩放/平移复位">重置视图</button>
       </div>
       <div class="tbSep"></div>
       <div class="tbGroup" id="shapeCtl" style="display:none">
@@ -299,29 +300,9 @@
         <span class="tbLab" id="routerZUnit" style="display:none">m</span>
         <button class="btn danger" id="btnShapeDel">删除选中图形</button>
       </div>
-      <div class="tbSep"></div>
-      <div class="tbGroup">
-        <label class="btn fileBtn" title="上传图片作为地图底图(≤10MB)">上传地图图片<input type="file" id="mapFile" accept="image/*"></label>
-        <button class="btn" id="btnGridBg" title="去掉图片底图, 恢复网格底图">恢复网格底图</button>
-      </div>
-      <div class="tbSep"></div>
-      <div class="tbGroup">
-        <button class="btn danger" id="btnClearDraw" title="清空全部墙体/门/桌/楼梯/电梯/路由器">清空全部图形</button>
-        <button class="btn danger" id="btnClearPts" title="清除全部测点(不可恢复)">清除坐标点</button>
-      </div>
-      <div class="tbSep"></div>
-      <div class="tbGroup" title="模板保存在服务器, 换浏览器/重启后仍可使用">
-        <span class="tbLab" id="tplCount">0 个</span>
-        <button class="btn" id="btnTplSave" title="把当前全部墙/门/桌/楼梯/电梯/路由器存为模板">存为模板</button>
-        <select id="tplSel" class="txt sel" style="width:auto;max-width:170px" title="模板列表"></select>
-        <button class="btn" id="btnTplApply" title="用所选模板替换当前全部墙/门/桌/楼梯/电梯(不影响坐标点)">应用模板</button>
-        <button class="btn danger" id="btnTplDel" title="删除所选模板">删除模板</button>
-      </div>
-      <div class="tbSep"></div>
-      <div class="tbGroup">
-        <button class="btn primary" id="btn3dView" title="在 2D 编辑与 3D 立体视图之间切换; 3D 下左键旋转 · 右键平移 · 滚轮缩放 · Esc 返回">三维视角</button>
-      </div>
     </div>
+    <!-- 底图上传入口在「绘图」菜单, 隐藏的文件选择框供其唤起 -->
+    <input type="file" id="mapFile" accept="image/*" hidden>
   </div>
 </main>
 

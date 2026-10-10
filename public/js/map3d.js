@@ -562,10 +562,7 @@ function set3dView(on) {
   view3d = on;
   $("map3dWrap").style.display = on ? "block" : "none";
   $("mapStage").style.display = on ? "none" : "block";
-  const b = $("btn3dView");
-  b.textContent = on ? "返回二维编辑" : "三维视角";
-  b.classList.toggle("activeTool", on);
-  b.classList.toggle("primary", !on);
+  $("btn3dView").textContent = "返回二维编辑";   // 按钮在 3D 视图右上角, 仅 3D 下可见
   if (on) { m3dBuild(); m3d.resize(); }
 }
 $("btn3dView").onclick = () => { if (walk.active) walkExit(); set3dView(!view3d); };

@@ -77,7 +77,6 @@ $("btnStair").onclick = () => setTool("stair");
 $("btnLift").onclick = () => setTool("lift");
 $("btnRouter").onclick = () => setTool("router");
 $("btnOrigin").onclick = () => setTool("origin");
-$("btnResetView").onclick = fitView;
 $("btnUndoDraw").onclick = () => {
   const last = undoStack.pop();
   if (!last) return;
@@ -105,18 +104,19 @@ $("btnUndoDraw").onclick = () => {
   persist(); renderDrawings();
   toast("已撤销" + (SHAPE_LABEL[last.kind] || ""));
 };
-$("btnUndoPt").onclick = () => {
+// 以下操作已收进「编辑」菜单(工具栏只留模式工具), 保留原确认对话框
+function undoLastPoint() {
   const p = mapPoints[mapPoints.length - 1];
   if (p) delPoint(p.id);   // 复用单点删除: 有已采数据时先确认
-};
-$("btnClearDraw").onclick = () => {
+}
+function clearAllDrawings() {
   if (!walls.length && !doors.length && !tables.length && !chairs.length && !stairs.length && !lifts.length && !routers.length) return;
   if (!confirm("清空全部墙体 / 门 / 桌 / 座椅 / 楼梯 / 电梯 / 路由器?")) return;
   walls = []; doors = []; tables = []; chairs = []; stairs = []; lifts = []; routers = []; undoStack = [];
   selShape = null; updateShapeCtl();
   persist(); renderDrawings();
-};
-$("btnClearPts").onclick = () => {
+}
+function clearAllPoints() {
   if (!mapPoints.length) return;
   if (!confirm(`确定清除全部 ${mapPoints.length} 个坐标点? 不可恢复, 数据库中对应的采样数据将一并删除`)) return;
   const ids = mapPoints.map(p => p.id);
@@ -124,4 +124,4 @@ $("btnClearPts").onclick = () => {
   apiPost("/api/db/delete", JSON.stringify({ point_ids: ids }), "application/json")
     .then(() => refreshDbCard());
   persist(); renderMarkers(); renderPtList(); renderDetail();
-};
+}
