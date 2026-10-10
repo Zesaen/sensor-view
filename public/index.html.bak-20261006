@@ -1,0 +1,1932 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>传感器实时监控 · 姿态 / 磁力计 / RSSI</title>
+<style>
+  :root {
+    --bg: #eef2f7;
+    --card: #ffffff;
+    --card2: #f5f8fb;
+    --border: #dbe3ec;
+    --text: #1c2a38;
+    --muted: #64748b;
+    --accent: #0284c7;
+    --green: #059669;
+    --yellow: #d97706;
+    --red: #dc2626;
+    --mono: "SF Mono", "Cascadia Code", "JetBrains Mono", Consolas, monospace;
+    /* emil-design-eng: UI 交互用强 ease-out, 屏内移动用强 ease-in-out */
+    --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+    --ease-in-out: cubic-bezier(0.77, 0, 0.175, 1);
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; }
+  body {
+    background: var(--bg); color: var(--text);
+    font-family: "PingFang SC", "Microsoft YaHei", "Segoe UI", system-ui, sans-serif;
+    font-size: 14px; overflow: hidden;
+  }
+  header {
+    height: 52px; display: flex; align-items: center; gap: 16px;
+    padding: 0 16px; border-bottom: 1px solid var(--border);
+    background: linear-gradient(180deg, #ffffff, #f6f9fc);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,.8), 0 8px 24px -18px rgba(15,23,42,.25);
+  }
+  header h1 { font-size: 16px; font-weight: 600; letter-spacing: .2px; }
+  header h1 span { color: var(--muted); font-weight: 400; }
+  .badges { display: flex; gap: 8px; margin-left: auto; flex-wrap: wrap; }
+  .badge {
+    display: flex; align-items: center; gap: 6px; padding: 4px 10px;
+    border: 1px solid var(--border); border-radius: 999px; background: var(--card2);
+    font-size: 12px; color: var(--muted); white-space: nowrap;
+    font-variant-numeric: tabular-nums;
+  }
+  .dot { width: 8px; height: 8px; border-radius: 50%; background: #94a3b8; flex: none; }
+  .dot.ok { background: var(--green); box-shadow: 0 0 6px rgba(5,150,105,.45); }
+  .dot.warn { background: var(--yellow); box-shadow: 0 0 6px rgba(217,119,6,.45); }
+  .dot.bad { background: var(--red); box-shadow: 0 0 6px rgba(220,38,38,.45); animation: dotPulse 1.6s ease-in-out infinite; }
+  @keyframes dotPulse { 50% { opacity: .35; } }
+
+  main { height: calc(100% - 52px); }
+  .viewGrid {
+    display: grid; grid-template-columns: 1fr 390px; gap: 12px;
+    padding: 12px; height: 100%;
+  }
+  #viewMap.mapGrid { grid-template-columns: 1fr 340px; grid-template-rows: auto 1fr auto; }
+  /* EDA 式上下工具栏: 横贯整个界面上方/下方 */
+  #mapTopBar, #mapToolBar {
+    grid-column: 1 / -1;
+    display: flex; align-items: center; flex-wrap: wrap; gap: 8px;
+    padding: 8px 12px;
+    background: linear-gradient(180deg, #ffffff, #fbfdff);
+    border: 1px solid var(--border); border-radius: 10px;
+    box-shadow: inset 0 1px 0 rgba(255,255,255,.8), 0 8px 24px -18px rgba(15,23,42,.18);
+  }
+  .tbLab { font-size: 12px; color: var(--muted); white-space: nowrap; }
+  .tbTxt { width: 60px; }
+  .tbGroup { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+  .tbSep { width: 1px; height: 22px; background: var(--border); flex: none; margin: 0 2px; }
+  .tbState {
+    flex: none; min-width: 64px; text-align: center;
+    padding: 4px 10px; border: 1px solid var(--border); border-radius: 999px;
+    background: var(--card2); font-size: 12px; font-weight: 600; color: var(--muted);
+    white-space: nowrap;
+  }
+  .tbState.on { color: var(--accent); border-color: rgba(2,132,199,.5); background: rgba(2,132,199,.08); }
+  .card {
+    background: linear-gradient(180deg, #ffffff, #fbfdff);
+    border: 1px solid var(--border);
+    border-radius: 10px; overflow: hidden; display: flex; flex-direction: column;
+    box-shadow: inset 0 1px 0 rgba(255,255,255,.8), 0 8px 24px -18px rgba(15,23,42,.18);
+  }
+  /* 入场: 卡片按 60ms 交错浮现 (仅首次, 透明度+位移) */
+  #viewLive > .card, #panel > .card, #mapPanel > .card, #mapTopBar, #mapToolBar {
+    transition: opacity 280ms var(--ease-out), transform 280ms var(--ease-out);
+    transition-delay: calc(var(--i, 0) * 60ms);
+  }
+  #viewLive > .card { --i: 0; }
+  #panel > .card:nth-child(1) { --i: 1; }
+  #panel > .card:nth-child(2) { --i: 2; }
+  #panel > .card:nth-child(3) { --i: 3; }
+  #panel > .card:nth-child(4) { --i: 4; }
+  #panel > .card:nth-child(5) { --i: 5; }
+  #mapPanel > .card:nth-child(1) { --i: 1; }
+  #mapPanel > .card:nth-child(2) { --i: 2; }
+  #mapPanel > .card:nth-child(3) { --i: 3; }
+  #mapPanel > .card:nth-child(4) { --i: 4; }
+  #mapTopBar { --i: 1; }
+  #mapToolBar { --i: 6; }
+  @starting-style {
+    #viewLive > .card, #panel > .card, #mapPanel > .card, #mapTopBar, #mapToolBar { opacity: 0; transform: translateY(8px); }
+  }
+  .card h2 {
+    font-size: 13px; font-weight: 600; color: var(--muted);
+    padding: 10px 14px; border-bottom: 1px solid var(--border);
+    display: flex; align-items: center; gap: 8px; flex: none;
+  }
+  .card h2 .val { margin-left: auto; color: var(--text); font-family: var(--mono); font-variant-numeric: tabular-nums; }
+
+  /* 3D 视图 */
+  #sceneWrap { position: relative; flex: 1; min-height: 0; }
+  #scene { position: absolute; inset: 0; }
+  #scene canvas { display: block; }
+  #sceneHint {
+    position: absolute; left: 12px; bottom: 10px; color: var(--muted);
+    font-size: 12px; pointer-events: none;
+  }
+  #legend {
+    position: absolute; right: 12px; top: 10px; background: rgba(255,255,255,.85);
+    backdrop-filter: blur(4px);
+    border: 1px solid var(--border); border-radius: 8px; padding: 8px 12px;
+    font-size: 12px; color: var(--muted); display: flex; flex-direction: column; gap: 5px;
+    box-shadow: 0 4px 16px -8px rgba(15,23,42,.25);
+  }
+  .lg { display: flex; align-items: center; gap: 8px; }
+  .sw { width: 18px; height: 3px; border-radius: 2px; }
+
+  /* 右侧面板 */
+  #panel, #mapPanel { display: flex; flex-direction: column; gap: 12px; overflow-y: auto; min-height: 0; }
+  #panel .card, #mapPanel .card { flex: none; }
+
+  .attGrid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; padding: 12px; }
+  .attItem {
+    background: var(--card2); border: 1px solid var(--border); border-radius: 8px;
+    padding: 10px 12px; text-align: center;
+  }
+  .attItem .k { font-size: 12px; color: var(--muted); }
+  .attItem .v {
+    font-family: var(--mono); font-variant-numeric: tabular-nums; font-size: 22px; font-weight: 600; margin: 4px 0 6px;
+  }
+  .attItem .v small { font-size: 12px; color: var(--muted); font-weight: 400; }
+  .bar { height: 4px; background: #e3eaf2; border-radius: 2px; overflow: hidden; }
+  .bar i { display: block; height: 100%; background: var(--accent); border-radius: 2px; transition: width 120ms linear; }
+
+  .magGrid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; padding: 12px; }
+  .magItem { background: var(--card2); border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; }
+  .magItem .k { font-size: 11px; color: var(--muted); }
+  .magItem .v { font-family: var(--mono); font-variant-numeric: tabular-nums; font-size: 16px; margin-top: 3px; }
+  .magItem.total .v { color: var(--accent); }
+
+  /* RSSI 表格 */
+  #apTable { width: 100%; border-collapse: collapse; font-size: 13px; }
+  #apTable td { padding: 7px 10px; border-top: 1px solid var(--border); }
+  #apTable tr:first-child td { border-top: none; }
+  #apTable .rank { color: var(--muted); width: 26px; font-family: var(--mono); font-variant-numeric: tabular-nums; }
+  #apTable .name { max-width: 130px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  #apTable .rssi { font-family: var(--mono); font-variant-numeric: tabular-nums; text-align: right; width: 62px; }
+  .sigbar { width: 90px; height: 6px; background: #e3eaf2; border-radius: 3px; overflow: hidden; }
+  .sigbar i { display: block; height: 100%; border-radius: 3px; transition: width 250ms var(--ease-out); }
+  #apTable tbody tr { transition: background 150ms var(--ease-out); }
+  @media (hover: hover) and (pointer: fine) {
+    #apTable tbody tr:hover { background: rgba(2,132,199,.07); }
+  }
+  .empty { color: var(--muted); text-align: center; padding: 18px 0 !important; }
+
+  #chartLegend { display: flex; flex-wrap: wrap; gap: 10px; padding: 8px 12px 0; font-size: 12px; color: var(--muted); }
+  #chartLegend .lg span { max-width: 100px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  #rssiChart { width: 100%; height: 130px; display: block; }
+
+  #stats { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; padding: 12px; }
+  .stat { background: var(--card2); border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; }
+  .stat .k { font-size: 11px; color: var(--muted); }
+  .stat .v { font-family: var(--mono); font-variant-numeric: tabular-nums; font-size: 15px; margin-top: 3px; }
+
+  /* 数据采集卡片 */
+  .colBox { padding: 12px; display: flex; flex-direction: column; gap: 10px; }
+  .colRow { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .colLab { font-size: 12px; color: var(--muted); width: 56px; flex: none; }
+  .chk { display: flex; align-items: center; gap: 5px; font-size: 13px; cursor: pointer; user-select: none; }
+  .chk input { accent-color: var(--accent); width: 15px; height: 15px; cursor: pointer; }
+  .btn {
+    padding: 6px 12px; border: 1px solid var(--border); border-radius: 7px;
+    background: var(--card); color: var(--text); font-size: 13px; cursor: pointer;
+    transition: background 150ms var(--ease-out), border-color 150ms var(--ease-out), transform 100ms var(--ease-out);
+  }
+  .btn:hover { background: var(--card2); border-color: #c3d0de; }
+  .btn:active { transform: scale(.96); }
+  .btn:disabled { opacity: .45; cursor: not-allowed; transform: none; }
+  .btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .btn.primary:hover { background: #0369a1; border-color: #0369a1; }
+  .btn.danger { color: var(--red); border-color: #f1c7c7; }
+  .btn.danger:hover { background: #fdf2f2; border-color: #eba8a8; }
+  .txt {
+    padding: 6px 8px; border: 1px solid var(--border); border-radius: 7px;
+    background: var(--card); color: var(--text); font-size: 13px; width: 86px;
+    font-family: var(--mono); font-variant-numeric: tabular-nums;
+  }
+  .txt:focus { outline: 2px solid rgba(2,132,199,.22); outline-offset: 0; border-color: var(--accent); }
+  .sel { width: auto; font-family: inherit; }
+  .colInfo { font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; line-height: 1.6; }
+
+  /* 视图切换 */
+  .viewTabs {
+    display: flex; gap: 4px; padding: 3px;
+    background: var(--card2); border: 1px solid var(--border); border-radius: 9px;
+  }
+  .vtab {
+    border: none; background: transparent; padding: 6px 14px; border-radius: 7px;
+    font-size: 13px; color: var(--muted); cursor: pointer; font-family: inherit;
+    transition: background 150ms var(--ease-out), color 150ms var(--ease-out);
+  }
+  .vtab.active {
+    background: var(--card); color: var(--accent); font-weight: 600;
+    box-shadow: 0 1px 4px rgba(15,23,42,.14);
+  }
+
+  /* 传感器地图 */
+  #mapWrap {
+    position: relative; flex: 1; min-height: 0;
+    display: flex; align-items: center; justify-content: center; overflow: hidden;
+  }
+  #mapStage { position: relative; flex: none; width: 100%; height: 100%; }
+  #mapStage.gridBg {
+    background-color: #f6f9fc;
+    background-image: linear-gradient(#dbe4ef 1px, transparent 1px), linear-gradient(90deg, #dbe4ef 1px, transparent 1px);
+    background-size: 40px 40px;
+  }
+  #mapStage.adding { cursor: crosshair; }
+  /* 阵列模式: 测点标记让位给画布点击(起点/终点可点在已有测点上) */
+  #mapStage.modeArray #mapMarkers { pointer-events: none; }
+  #mapImg { display: block; position: absolute; left: 0; top: 0; transform-origin: 0 0; }
+  #wallSvg { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+  #mapMarkers { position: absolute; inset: 0; }
+  .mk { position: absolute; left: 0; top: 0; }
+  .mkDot {
+    transform: translate(-50%, -50%);
+    min-width: 22px; height: 22px; padding: 0 5px; border-radius: 11px;
+    background: var(--accent); color: #fff; font-size: 12px; font-family: var(--mono);
+    display: flex; align-items: center; justify-content: center;
+    border: 2px solid #fff; box-shadow: 0 1px 5px rgba(15,23,42,.4);
+    cursor: pointer; user-select: none;
+    transition: transform 120ms var(--ease-out), background 150ms var(--ease-out);
+  }
+  .mk:hover .mkDot { transform: translate(-50%, -50%) scale(1.15); }
+  .mk.sel .mkDot { background: var(--green); box-shadow: 0 0 0 3px rgba(5,150,105,.25), 0 1px 5px rgba(15,23,42,.4); }
+  .mkProg {
+    position: absolute; left: 50%; top: 13px; transform: translateX(-50%);
+    background: rgba(255,255,255,.94); border: 1px solid var(--border); border-radius: 6px;
+    color: var(--text); font-size: 10px; font-family: var(--mono);
+    padding: 1px 5px; white-space: nowrap; box-shadow: 0 1px 4px rgba(15,23,42,.22);
+  }
+  #originMark { position: absolute; left: 0; top: 0; pointer-events: none; z-index: 1; }
+  #originMark span { position: absolute; transform: translate(-50%, -50%); width: 18px; height: 18px; display: block; }
+  #originMark span::before, #originMark span::after { content: ""; position: absolute; background: var(--red); }
+  #originMark span::before { left: 50%; top: 0; width: 2px; height: 100%; transform: translateX(-50%); }
+  #originMark span::after { top: 50%; left: 0; height: 2px; width: 100%; transform: translateY(-50%); }
+  #originMark em {
+    position: absolute; transform: translate(9px, 7px);
+    font-size: 10px; color: var(--red); font-style: normal; font-family: var(--mono);
+    background: rgba(255,255,255,.88); padding: 0 3px; border-radius: 4px;
+  }
+  #mapHint {
+    position: absolute; left: 12px; bottom: 10px; color: var(--muted);
+    font-size: 12px; pointer-events: none;
+  }
+  .mapTools { padding: 12px; display: flex; flex-direction: column; gap: 8px; }
+  .mapTools .btn { text-align: center; }
+  .modeRow { display: flex; gap: 8px; }
+  .modeRow .btn { flex: 1; padding: 6px 4px; font-size: 12.5px; }
+  .btn.activeTool { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .btn.activeTool:hover { background: #0369a1; border-color: #0369a1; }
+  .frmRow { display: flex; align-items: center; gap: 8px; }
+  .frmLab { font-size: 12px; color: var(--muted); flex: 1; }
+  .frmRow .txt { width: 74px; flex: none; }
+  .chkBox { width: 15px; height: 15px; accent-color: var(--accent); cursor: pointer; }
+  .grow2 { flex: 1; }
+  .fileBtn { position: relative; overflow: hidden; }
+  .fileBtn input { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
+  .toolTip { font-size: 12px; color: var(--muted); line-height: 1.6; }
+  .ptProg { font-size: 12px; color: var(--accent); font-family: var(--mono); font-variant-numeric: tabular-nums; }
+  .oriChips { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+  .oriChip {
+    padding: 3px 9px; border: 1px solid var(--border); border-radius: 999px;
+    font-size: 12px; font-family: var(--mono); color: var(--muted); user-select: none;
+  }
+  .oriChip.done { background: rgba(5,150,105,.12); border-color: var(--green); color: var(--green); }
+  .oriChip.next { border-color: var(--accent); color: var(--accent); cursor: pointer; }
+  .oriChip.next:hover { background: rgba(2,132,199,.08); }
+  #ptList { max-height: 170px; overflow-y: auto; }
+  .ptItem {
+    display: flex; align-items: center; gap: 8px; padding: 7px 12px;
+    cursor: pointer; border-top: 1px solid var(--border); font-size: 13px;
+  }
+  .ptItem:first-child { border-top: none; }
+  .ptItem:hover { background: var(--card2); }
+  .ptItem.sel { background: rgba(5,150,105,.08); }
+  .ptNo {
+    width: 20px; height: 20px; border-radius: 50%; flex: none;
+    background: var(--accent); color: #fff; font-size: 11px; font-family: var(--mono);
+    display: flex; align-items: center; justify-content: center;
+  }
+  .ptItem.sel .ptNo { background: var(--green); }
+  .ptName { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .ptXY { color: var(--muted); font-size: 12px; font-family: var(--mono); }
+  .ptDel {
+    flex: none; width: 20px; height: 20px; margin-left: 2px;
+    border: none; border-radius: 5px; background: transparent;
+    color: var(--muted); font-size: 15px; line-height: 1; cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    transition: background 150ms var(--ease-out), color 150ms var(--ease-out);
+  }
+  .ptDel:hover { background: #fdf2f2; color: var(--red); }
+  .ptDetail { padding: 12px; display: flex; flex-direction: column; gap: 10px; }
+  .ptHead { display: flex; align-items: center; gap: 8px; }
+  .ptHead .grow { flex: 1; width: auto; }
+  .ptCoord { color: var(--muted); font-size: 12px; font-family: var(--mono); white-space: nowrap; }
+  .ptGrid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+  .ptAp { width: 100%; border-collapse: collapse; font-size: 12px; }
+  .ptAp td { padding: 5px 8px; border-top: 1px solid var(--border); }
+  .ptAp tr:first-child td { border-top: none; }
+  .ptAp .name { max-width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .ptAp .rssi { text-align: right; font-family: var(--mono); font-variant-numeric: tabular-nums; }
+  .detailBtns { display: flex; gap: 8px; padding: 0 12px 12px; }
+  .detailBtns .btn { flex: 1; }
+
+  /* 减弱动态偏好: 保留信息呈现, 去掉位移动画 (emil-design-eng 无障碍要求) */
+  @media (prefers-reduced-motion: reduce) {
+    #viewLive > .card, #panel > .card, #mapPanel > .card, #mapTopBar, #mapToolBar { transition: none; }
+    .bar i, .sigbar i, #apTable tbody tr, .btn, .mkDot, .vtab { transition: none; }
+    .dot.bad { animation: none; }
+  }
+
+  @media (max-width: 900px) {
+    body { overflow: auto; }
+    .viewGrid { grid-template-columns: 1fr; height: auto; }
+    #sceneWrap, #mapWrap { height: 55vh; }
+  }
+</style>
+</head>
+<body>
+<header>
+  <h1>传感器实时监控 <span>/ sensor-view</span></h1>
+  <div class="viewTabs">
+    <button class="vtab active" id="tabLive">实时监控</button>
+    <button class="vtab" id="tabMap">传感器地图</button>
+  </div>
+  <div class="badges">
+    <div class="badge"><span class="dot" id="dotImu"></span>IMU · 9001 <b id="imuBadge">等待数据</b></div>
+    <div class="badge"><span class="dot" id="dotRssi"></span>RSSI · 9002 <b id="rssiBadge">等待数据</b></div>
+    <div class="badge"><span class="dot" id="dotSse"></span>页面 <b id="sseBadge">连接中</b></div>
+  </div>
+</header>
+
+<main>
+  <div id="viewLive" class="viewGrid">
+  <!-- 3D 姿态视图 -->
+  <div class="card">
+    <h2>设备姿态 · 10×10×3 cm
+      <span class="val" id="attOverlay">yaw --° · pitch --° · roll --°</span>
+    </h2>
+    <div id="sceneWrap">
+      <div id="scene"></div>
+      <div id="legend">
+        <div class="lg"><span class="sw" style="background:#f59e0b"></span>橙色箭头 = 设备正前方</div>
+        <div class="lg"><span class="sw" style="background:#ef4444"></span>红色箭头 = 磁场方向(机体系)</div>
+        <div class="lg"><span class="sw" style="background:#059669"></span>绿色箭头 = 磁北参考(地面)</div>
+      </div>
+      <div id="sceneHint">拖动旋转视角 · 滚轮缩放 · 1 格 = 1 cm</div>
+    </div>
+  </div>
+
+  <div id="panel">
+    <!-- 姿态 + 磁力计 -->
+    <div class="card">
+      <h2>姿态角 <span class="val" id="ageImu">--</span></h2>
+      <div class="attGrid">
+        <div class="attItem">
+          <div class="k">Yaw 偏航</div>
+          <div class="v" style="color:#0284c7"><span id="vYaw">--</span><small>°</small></div>
+          <div class="bar"><i id="bYaw"></i></div>
+        </div>
+        <div class="attItem">
+          <div class="k">Pitch 俯仰</div>
+          <div class="v" style="color:#059669"><span id="vPitch">--</span><small>°</small></div>
+          <div class="bar"><i id="bPitch"></i></div>
+        </div>
+        <div class="attItem">
+          <div class="k">Roll 横滚</div>
+          <div class="v" style="color:#d97706"><span id="vRoll">--</span><small>°</small></div>
+          <div class="bar"><i id="bRoll"></i></div>
+        </div>
+      </div>
+      <h2 style="border-top:1px solid var(--border)">磁力计 MAG <span class="val" id="magDir">--</span></h2>
+      <div class="magGrid">
+        <div class="magItem"><div class="k">X (前) µT</div><div class="v" id="vMx">--</div></div>
+        <div class="magItem"><div class="k">Y (右) µT</div><div class="v" id="vMy">--</div></div>
+        <div class="magItem"><div class="k">Z (下) µT</div><div class="v" id="vMz">--</div></div>
+        <div class="magItem total"><div class="k">|B| 总场强</div><div class="v" id="vMag">--</div></div>
+      </div>
+    </div>
+
+    <!-- RSSI -->
+    <div class="card">
+      <h2>WiFi AP 信号强度 <span class="val" id="ageRssi">--</span></h2>
+      <table id="apTable">
+        <tbody id="apBody"><tr><td class="empty" colspan="4">等待数据…</td></tr></tbody>
+      </table>
+    </div>
+
+    <div class="card">
+      <h2>RSSI 历史曲线 <span class="val">最近 ~4 分钟</span></h2>
+      <div id="chartLegend"></div>
+      <canvas id="rssiChart"></canvas>
+    </div>
+
+    <!-- 数据采集 / 后台数据 -->
+    <div class="card">
+      <h2>数据采集 <span class="val" id="colState">未采集</span></h2>
+      <div class="colBox">
+        <div class="colRow">
+          <span class="colLab">数据源</span>
+          <label class="chk"><input type="checkbox" id="srcImu" checked>IMU 姿态</label>
+          <label class="chk"><input type="checkbox" id="srcWifi" checked>WiFi RSSI</label>
+        </div>
+        <div class="colRow">
+          <span class="colLab">采集条数</span>
+          <input type="number" class="txt" id="colLimit" min="1" step="1" placeholder="不限" title="填 N 则采满 N 条自动停止, 留空不限量">
+          <button class="btn primary" id="btnStart">开始采集</button>
+          <button class="btn" id="btnStop" disabled>停止</button>
+        </div>
+        <div class="colRow">
+          <span class="colLab">下载格式</span>
+          <select class="txt sel" id="dlFmt">
+            <option value="csv">CSV (Excel)</option>
+            <option value="json">JSON</option>
+          </select>
+          <button class="btn" id="btnDlImu">下载 IMU</button>
+          <button class="btn" id="btnDlWifi">下载 WiFi</button>
+        </div>
+        <div class="colRow">
+          <button class="btn danger" id="btnClear">清空后台数据</button>
+        </div>
+        <div class="colInfo" id="colInfo">后台暂无数据</div>
+      </div>
+    </div>
+
+    <!-- 统计 -->
+    <div class="card">
+      <h2>数据统计</h2>
+      <div id="stats">
+        <div class="stat"><div class="k">IMU 累计 / 速率</div><div class="v" id="stImu">--</div></div>
+        <div class="stat"><div class="k">RSSI 累计 / 速率</div><div class="v" id="stRssi">--</div></div>
+        <div class="stat"><div class="k">设备运行时间</div><div class="v" id="stUp">--</div></div>
+        <div class="stat"><div class="k">服务器时间</div><div class="v" id="stTime">--</div></div>
+      </div>
+    </div>
+  </div>
+  </div><!-- /viewLive -->
+
+  <!-- 传感器地图视图 -->
+  <div id="viewMap" class="viewGrid mapGrid" style="display:none">
+    <div id="mapTopBar">
+      <div class="tbGroup">
+        <button class="btn primary" id="btnExportCsv" title="汇总: 每测点一行(采样均值)">导出汇总 CSV</button>
+        <button class="btn" id="btnExportRaw" title="逐条: 每条 IMU 采样 / 每次 WiFi 扫描一行, 含坐标(格, 相对原点)">导出逐条 CSV</button>
+      </div>
+      <div class="tbSep"></div>
+      <div class="tbGroup">
+        <span class="tbLab">网格单位</span>
+        <input type="number" id="gridSizeIn" class="txt tbTxt" min="10" max="500" step="5" value="50"><span class="tbLab">px/格</span>
+        <label class="chk" title="开/关背景栅格线"><input type="checkbox" id="gridOnIn" class="chkBox" checked>显示栅格</label>
+        <label class="chk" title="单独隐藏网格细线(每 1 米的粗线保留)"><input type="checkbox" id="gridMinorIn" class="chkBox" checked>细线</label>
+        <label class="chk" title="放点/墙体/原点时自动吸附到网格交点"><input type="checkbox" id="snapOn" class="chkBox" checked>网格吸附</label>
+      </div>
+      <div class="tbSep"></div>
+      <div class="tbGroup">
+        <span class="tbLab">比例 1米=</span>
+        <input type="number" id="pxPerMIn" class="txt tbTxt" min="1" step="1" value="50"><span class="tbLab">px</span>
+        <span class="tbLab">墙厚</span>
+        <input type="number" id="wallThickIn" class="txt tbTxt" min="0.1" step="0.1" value="0.2">
+        <select id="thickUnitIn" class="txt sel" style="width:56px;flex:none"><option value="m">m</option><option value="px">px</option></select>
+      </div>
+      <div class="tbSep"></div>
+      <div class="tbGroup" title="测点详情「采集」按键每次采集的默认条数">
+        <span class="tbLab">每次采集 IMU</span>
+        <input type="number" id="defImuN" class="txt tbTxt" min="0" step="1" value="10"><span class="tbLab">条</span>
+        <span class="tbLab">每朝向 WiFi</span>
+        <input type="number" id="defWifiN" class="txt tbTxt" min="0" step="1" value="3"><span class="tbLab">次</span>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>传感器分布地图 <span class="val" id="mapStat">0 个坐标点</span></h2>
+      <div id="mapWrap">
+        <div id="mapStage" class="gridBg">
+          <img id="mapImg" alt="地图底图" style="display:none">
+          <svg id="wallSvg">
+            <g id="worldG" transform="translate(0 0) scale(1)">
+              <g id="arrayG"></g>
+              <g id="wallG"></g>
+              <line id="wallPreview" style="display:none" stroke="#0284c7" stroke-width="2"
+                    stroke-dasharray="6 4" vector-effect="non-scaling-stroke"/>
+              <rect id="rectPreview" style="display:none" fill="rgba(2,132,199,.12)"
+                    stroke="#0284c7" stroke-width="1.5" stroke-dasharray="5 4"
+                    vector-effect="non-scaling-stroke"/>
+            </g>
+          </svg>
+          <div id="mapMarkers"></div>
+          <div id="originMark"><span></span><em>(0,0)</em></div>
+          <div id="mapHint">左键/中键拖动平移(放置模式下用中键) · 滚轮缩放 · 墙/桌: 对角拖拽 · 门: 拖方向线 · 圆点/路由器/(0,0): 点击放置 · 阵列放点: 点起点→点终点按个数均布 · 点击图形可选中编辑 · 点击测点查看数据</div>
+        </div>
+      </div>
+    </div>
+
+    <div id="mapPanel">
+      <div class="card">
+        <h2>坐标点列表 <span class="val" id="ptCount">0</span></h2>
+        <div id="ptList"><div class="empty">暂无坐标点</div></div>
+      </div>
+
+      <div class="card">
+        <h2>测点详情 <span class="val" id="ptTime"></span></h2>
+        <div id="ptDetail" class="ptDetail"><div class="empty">点击地图上的圆点查看该点传感器数据</div></div>
+        <div class="detailBtns">
+          <button class="btn" id="btnResetPt" disabled>重置采样</button>
+          <button class="btn danger" id="btnDelPt" disabled>删除该点</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="mapToolBar">
+      <span class="tbState" id="toolState">平移</span>
+      <div class="tbSep"></div>
+      <div class="tbGroup">
+        <button class="btn" id="btnAddPoint" title="点击地图放测点; 放点后不自动采样, 选中测点后按「采集」按键采集, 每按一次采一个朝向, 按 0°→90°→180°→270° 顺序共 4 次">添加坐标点</button>
+        <button class="btn" id="btnWall" title="按对角拖出实体矩形墙; 再点一次本按钮退出该模式">绘制墙体</button>
+        <button class="btn" id="btnDoor" title="拖出门洞方向, 门叶画在拖动方向左侧">放置门</button>
+        <button class="btn" id="btnTable" title="按对角拖出矩形桌">放置桌</button>
+        <button class="btn" id="btnRouter" title="点击放置路由器">放置路由器</button>
+        <button class="btn" id="btnOrigin" title="点击设定坐标原点(0,0)">设置(0,0)点</button>
+      </div>
+      <div class="tbSep"></div>
+      <div class="tbGroup">
+        <button class="btn" id="btnArray" title="阵列放点: 开启时若已选中测点则以它为起点, 否则第一次点击定起点; 移动鼠标实时预览, 第二次点击定终点, 按设定个数在起点→终点间均匀布点(含两端); 右键或 Esc 取消起点">阵列放点</button>
+        <span class="tbLab">个数</span>
+        <input type="number" id="arrNIn" class="txt tbTxt" min="2" max="200" step="1" value="4">
+      </div>
+      <div class="tbSep"></div>
+      <div class="tbGroup">
+        <button class="btn" id="btnUndoDraw" title="撤销最近一次绘制/放点(阵列按整批撤销)">撤销上一笔</button>
+        <button class="btn" id="btnUndoPt" title="删除最后一个测点; 已采到数据的点会先确认">撤销上一点</button>
+        <button class="btn" id="btnResetView" title="缩放/平移复位">重置视图</button>
+      </div>
+      <div class="tbSep"></div>
+      <div class="tbGroup" id="shapeCtl" style="display:none">
+        <span class="frmLab" id="shapeInfo" style="flex:none;min-width:64px"></span>
+        <button class="btn" id="btnDoorFlip" style="display:none" title="门叶翻到门洞另一侧">翻转开门方向</button>
+        <button class="btn" id="btnDoorHinge" style="display:none" title="铰链换到门另一端">换门铰端</button>
+        <button class="btn danger" id="btnShapeDel">删除选中图形</button>
+      </div>
+      <div class="tbSep"></div>
+      <div class="tbGroup">
+        <label class="btn fileBtn" title="上传图片作为地图底图(≤10MB)">上传地图图片<input type="file" id="mapFile" accept="image/*"></label>
+        <button class="btn" id="btnGridBg" title="去掉图片底图, 恢复网格底图">恢复网格底图</button>
+      </div>
+      <div class="tbSep"></div>
+      <div class="tbGroup">
+        <button class="btn danger" id="btnClearDraw" title="清空全部墙体/门/桌/路由器">清空全部图形</button>
+        <button class="btn danger" id="btnClearPts" title="清除全部测点(不可恢复)">清除坐标点</button>
+      </div>
+      <div class="tbSep"></div>
+      <div class="tbGroup" title="模板保存在服务器, 换浏览器/重启后仍可使用">
+        <span class="tbLab" id="tplCount">0 个</span>
+        <button class="btn" id="btnTplSave" title="把当前全部墙/门/桌/路由器存为模板">存为模板</button>
+        <select id="tplSel" class="txt sel" style="width:auto;max-width:170px" title="模板列表"></select>
+        <button class="btn" id="btnTplApply" title="用所选模板替换当前全部墙/门/桌(不影响坐标点)">应用模板</button>
+        <button class="btn danger" id="btnTplDel" title="删除所选模板">删除模板</button>
+      </div>
+    </div>
+  </div>
+</main>
+
+<script src="/three.min.js"></script>
+<script src="/OrbitControls.js"></script>
+<script>
+/* ================= SSE 数据接入 ================= */
+const tgt = { yaw: 0, pitch: 0, roll: 0, mag: [0, 0, 0] };   // 目标姿态(来自最新 IMU)
+const cur = { yaw: 0, pitch: 0, roll: 0 };                   // 显示用平滑姿态
+let lastImuTs = 0, lastRssiTs = 0, bootMs = null;
+const stats = { imuCount: 0, rssiCount: 0, imuRate: 0, rssiRate: 0 };
+const apHistory = new Map();      // name -> [{t(ms), rssi}]
+const apPalette = ["#0284c7", "#7c3aed", "#d97706", "#059669", "#dc2626", "#c026d3", "#0891b2"];
+const apColor = new Map();
+
+function colorFor(name) {
+  if (!apColor.has(name)) apColor.set(name, apPalette[apColor.size % apPalette.length]);
+  return apColor.get(name);
+}
+
+const $ = id => document.getElementById(id);
+const fmt1 = v => (v == null || isNaN(v)) ? "--" : v.toFixed(1);
+
+function onImu(d) {
+  if (typeof d.yaw === "number") tgt.yaw = d.yaw;
+  if (typeof d.pitch === "number") tgt.pitch = d.pitch;
+  if (typeof d.roll === "number") tgt.roll = d.roll;
+  if (Array.isArray(d.mag) && d.mag.length === 3) tgt.mag = d.mag;
+  lastImuTs = Date.now();
+  $("attOverlay").textContent = `yaw ${fmt1(d.yaw)}° · pitch ${fmt1(d.pitch)}° · roll ${fmt1(d.roll)}°`;
+  $("vYaw").textContent = fmt1(d.yaw);
+  $("vPitch").textContent = fmt1(d.pitch);
+  $("vRoll").textContent = fmt1(d.roll);
+  $("bYaw").style.width = ((d.yaw + 180) / 360 * 100).toFixed(1) + "%";
+  $("bPitch").style.width = ((d.pitch + 90) / 180 * 100).toFixed(1) + "%";
+  $("bRoll").style.width = ((d.roll + 90) / 180 * 100).toFixed(1) + "%";
+  const [mx, my, mz] = tgt.mag;
+  const mag = Math.hypot(mx, my, mz);
+  $("vMx").textContent = fmt1(mx); $("vMy").textContent = fmt1(my); $("vMz").textContent = fmt1(mz);
+  $("vMag").textContent = fmt1(mag);
+  // 磁场水平分量的罗盘方位(机体系: x前 y右; 实测校验 mx≈1,my≈31 → 272°, 与 yaw -89° 吻合)
+  const heading = (Math.atan2(-my, mx) * 180 / Math.PI + 360) % 360;
+  $("magDir").textContent = "磁场罗盘方位 " + heading.toFixed(0) + "°";
+  if (collectingN) tapCollect("imu", { t: Date.now(), yaw: d.yaw, pitch: d.pitch, roll: d.roll, mag: tgt.mag.slice() });
+}
+
+function onRssi(d) {
+  lastRssiTs = Date.now();
+  if (typeof d.timestamp_ms === "number") bootMs = d.timestamp_ms;
+  const aps = (d.aps || []).slice().sort((a, b) => (a.rank || 99) - (b.rank || 99));
+  const now = Date.now();
+  for (const ap of aps) {
+    if (!apHistory.has(ap.name)) apHistory.set(ap.name, []);
+    const h = apHistory.get(ap.name);
+    h.push({ t: now, rssi: ap.rssi });
+    if (h.length > 130) h.shift();
+  }
+  renderApTable(aps);
+  renderChart(aps);
+  if (collectingN) tapCollect("wifi", { t: Date.now(), aps: aps.map(a => ({ name: a.name, rssi: a.rssi })) });
+}
+
+function rssiColor(r) {
+  if (r >= -55) return "#059669";
+  if (r >= -70) return "#65a30d";
+  if (r >= -80) return "#d97706";
+  return "#dc2626";
+}
+
+let lastAps = [];   // 最近一次 AP 列表, 供 1s 定时器重绘曲线
+function renderApTable(aps) {
+  lastAps = aps;
+  const tb = $("apBody");
+  if (!aps.length) { tb.innerHTML = '<tr><td class="empty" colspan="4">无 AP</td></tr>'; return; }
+  tb.innerHTML = aps.map(ap => {
+    const pct = Math.max(2, Math.min(100, (ap.rssi + 100) / 70 * 100));
+    const c = rssiColor(ap.rssi);
+    return `<tr>
+      <td class="rank">${ap.rank}</td>
+      <td class="name" title="${ap.name}">${ap.name}</td>
+      <td><div class="sigbar"><i style="width:${pct}%;background:${c}"></i></div></td>
+      <td class="rssi" style="color:${c}">${ap.rssi} dBm</td>
+    </tr>`;
+  }).join("");
+}
+
+function renderChart(aps) {
+  const cv = $("rssiChart");
+  const dpr = window.devicePixelRatio || 1;
+  const W = cv.clientWidth, H = cv.clientHeight || 130;
+  cv.width = W * dpr; cv.height = H * dpr;
+  const ctx = cv.getContext("2d");
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, W, H);
+
+  // 取当前排名前 3 的 AP
+  const top = aps.slice(0, 3).map(a => a.name);
+  const legend = $("chartLegend");
+  legend.innerHTML = top.map((n, i) =>
+    `<div class="lg"><span class="sw" style="background:${colorFor(n)}"></span><span>${n}</span></div>`).join("");
+
+  const RMIN = -100, RMAX = -30, PADL = 34, PADR = 6, PADT = 8, PADB = 16;
+  const yOf = r => PADT + (H - PADT - PADB) * (1 - (r - RMIN) / (RMAX - RMIN));
+
+  ctx.strokeStyle = "#e2e8f0"; ctx.fillStyle = "#7c8b9d"; ctx.font = "10px Consolas";
+  ctx.textAlign = "right";
+  for (let r = RMAX; r >= RMIN; r -= 20) {
+    const y = yOf(r);
+    ctx.beginPath(); ctx.moveTo(PADL, y); ctx.lineTo(W - PADR, y); ctx.stroke();
+    ctx.fillText(r, PADL - 4, y + 3);
+  }
+
+  const now = Date.now(), SPAN = 240000;   // 4 分钟窗口
+  for (let i = 0; i < top.length; i++) {
+    const h = apHistory.get(top[i]) || [];
+    if (h.length < 2) continue;
+    ctx.strokeStyle = colorFor(top[i]); ctx.lineWidth = 1.6; ctx.beginPath();
+    let started = false;
+    for (const p of h) {
+      const age = now - p.t;
+      if (age > SPAN) continue;
+      const px = PADL + (W - PADL - PADR) * (1 - age / SPAN);
+      const py = yOf(Math.max(RMIN, Math.min(RMAX, p.rssi)));
+      started ? ctx.lineTo(px, py) : (ctx.moveTo(px, py), started = true);
+    }
+    ctx.stroke();
+  }
+  ctx.textAlign = "left"; ctx.fillStyle = "#7c8b9d";
+  ctx.fillText("-4min", PADL, H - 4); ctx.textAlign = "right"; ctx.fillText("now", W - PADR, H - 4);
+}
+
+/* SSE 连接 */
+let sseOk = false;
+function setSse(ok, txt) {
+  sseOk = ok;
+  $("dotSse").className = "dot " + (ok ? "ok" : "bad");
+  $("sseBadge").textContent = txt;
+}
+const es = new EventSource("/events");
+es.onopen = () => setSse(true, "已连接");
+es.onerror = () => setSse(false, "重连中…");
+es.addEventListener("snapshot", e => {
+  const s = JSON.parse(e.data);
+  if (s.imu) onImu(s.imu);
+  if (s.rssi) onRssi(s.rssi);
+  if (s.stats) {
+    lastImuTs = s.stats.last_ts.imu * 1000 || lastImuTs;
+    lastRssiTs = s.stats.last_ts.rssi * 1000 || lastRssiTs;
+  }
+});
+es.addEventListener("imu", e => onImu(JSON.parse(e.data)));
+es.addEventListener("rssi", e => onRssi(JSON.parse(e.data)));
+
+/* ================= 数据采集控制 ================= */
+async function api(url) {
+  try { const r = await fetch(url); return await r.json(); } catch { return null; }
+}
+
+async function refreshCollect() {
+  const s = await api("/api/status");
+  if (!s || !s.recording) return;
+  // 累计条数与速率以服务器为准(清空后自动归零)
+  stats.imuCount = s.counts.imu; stats.rssiCount = s.counts.rssi;
+  stats.imuRate = s.rates.imu; stats.rssiRate = s.rates.rssi;
+  const on = s.recording.imu.active || s.recording.rssi.active;
+  const st = $("colState");
+  st.textContent = on ? "采集中…" : "未采集";
+  st.style.color = on ? "var(--green)" : "";
+  $("btnStart").disabled = on;
+  $("btnStop").disabled = !on;
+  const parts = [];
+  for (const [k, label] of [["imu", "IMU"], ["rssi", "WiFi"]]) {
+    const r = s.recording[k];
+    let seg = `${label} ${s.history[k]} 条`;
+    if (r.active) seg += `（本次 ${r.taken}${r.limit ? "/" + r.limit : ""}）`;
+    parts.push(seg);
+  }
+  $("colInfo").textContent = "后台已存: " + parts.join(" · ");
+}
+
+$("btnStart").onclick = async () => {
+  const srcs = [$("srcImu").checked ? "imu" : null, $("srcWifi").checked ? "wifi" : null].filter(Boolean);
+  if (!srcs.length) { alert("请至少选择一个数据源"); return; }
+  const limit = Math.max(0, parseInt($("colLimit").value, 10) || 0);
+  const src = srcs.length === 2 ? "all" : srcs[0];
+  await api(`/api/collect?action=start&src=${src}&limit=${limit}`);
+  refreshCollect();
+};
+$("btnStop").onclick = async () => {
+  await api("/api/collect?action=stop&src=all");
+  refreshCollect();
+};
+$("btnClear").onclick = async () => {
+  if (!confirm("确定清空后台已采集的全部数据？此操作不可恢复。")) return;
+  await api("/api/clear");
+  apHistory.clear();   // 顺带清掉页面上的历史曲线缓冲
+  refreshCollect();
+};
+function download(src) {
+  const a = document.createElement("a");
+  a.href = `/api/download?src=${src}&fmt=${$("dlFmt").value}`;
+  a.download = "";
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+}
+$("btnDlImu").onclick = () => download("imu");
+$("btnDlWifi").onclick = () => download("wifi");
+
+/* ================= 视图切换 + 传感器地图 ================= */
+const escH = s => String(s).replace(/[&<>"']/g,
+  c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+let mapPoints = [];      // {id,name,x,y(世界px),time,nImu,nWifi,imuSamples,wifiScans,collecting}
+let walls = [];          // {x1,y1,x2,y2} 世界px
+let doors = [];          // {x1,y1,x2,y2} 门宽方向 A→B, 门叶/弧线画在拖动方向左侧
+let tables = [];         // {x1,y1,x2,y2} 矩形两角(已归一化)
+let routers = [];        // {x,y} 路由器位置(世界px)
+let undoStack = [];      // {kind:'wall'|'door'|'table', obj} 供撤销
+let origin = { x: 0, y: 0 };
+let gridSize = 50;       // 每格对应的世界像素
+let snapOn = true;
+let gridOn = true;       // 是否显示栅格
+let gridMinorOn = true;  // 是否显示网格细线(粗线=每1米独立保留)
+let wallThick = 10;      // 墙体厚度(世界px)
+let thickUnit = "m";     // 厚度输入单位: m 最小 0.1m / px 最小 1px
+let pxPerM = 50;         // 比例: 1 米 = ? 世界px
+let view = { s: 1, tx: 0, ty: 0 };   // 屏幕 = 世界 * s + t
+let tool = "pan";        // pan | add | wall | origin
+let selPointId = null;
+let selShape = null;     // 选中的图形 {kind:'wall'|'door'|'table'|'router', obj}
+let arrayAnchor = null;  // 阵列起点(世界px), 阵列模式下第一次点击或选中的测点
+let lastMouse = null;    // 最近一次鼠标位置(世界px), 供阵列预览
+let mapHasImage = false;
+let collectingN = 0;     // 正在采样的测点数(>0 时才在数据流上分发, 保证实时性能)
+let shapeDraft = null;   // {kind:'wall'|'door'|'table', x1,y1,x2,y2}
+let panState = null;
+let mapImgNatural = [0, 0];
+
+const pointById = id => mapPoints.find(q => q.id === id);
+async function apiPost(url, body, ctype) {
+  try {
+    const r = await fetch(url, { method: "POST", body,
+      headers: ctype ? { "Content-Type": ctype } : {} });
+    return await r.json();
+  } catch { return null; }
+}
+
+function showView(v) {
+  $("viewLive").style.display = v === "live" ? "" : "none";
+  $("viewMap").style.display = v === "map" ? "" : "none";
+  $("tabLive").classList.toggle("active", v === "live");
+  $("tabMap").classList.toggle("active", v === "map");
+  if (v === "map") applyView();
+}
+$("tabLive").onclick = () => showView("live");
+$("tabMap").onclick = () => showView("map");
+
+/* ---- 坐标变换 / 视图 ---- */
+const worldToScreen = (wx, wy) => [wx * view.s + view.tx, wy * view.s + view.ty];
+const screenToWorld = (sx, sy) => [(sx - view.tx) / view.s, (sy - view.ty) / view.s];
+const snapV = v => snapOn ? Math.round(v / gridSize) * gridSize : Math.round(v * 100) / 100;
+
+function applyView() {
+  const { s, tx, ty } = view;
+  $("mapImg").style.transform = `translate(${tx}px, ${ty}px) scale(${s})`;
+  $("worldG").setAttribute("transform", `translate(${tx} ${ty}) scale(${s})`);
+  // 双层网格: 细线 = 网格单位, 粗线 = 每 1 米 (pxPerM); 太密时自动隐藏对应层
+  const st = $("mapStage");
+  if (!gridOn) {
+    st.style.backgroundImage = "none";
+  } else {
+    const minor = gridSize * s, major = pxPerM * s;
+    const bg = [], sz = [];
+    if (major >= 4) {
+      // 粗线粗细随缩放间距自适应: 缩小后间距变密, 同步变细避免显得过粗
+      const th = major >= 32 ? 2 : major >= 12 ? 1 : 0.5;
+      bg.push(`linear-gradient(#9fb2c6 ${th}px, transparent ${th}px)`,
+              `linear-gradient(90deg, #9fb2c6 ${th}px, transparent ${th}px)`);
+      sz.push(`${major}px ${major}px`, `${major}px ${major}px`);
+    }
+    if (minor >= 4 && gridMinorOn) {
+      bg.push("linear-gradient(#dbe4ef 1px, transparent 1px)",
+              "linear-gradient(90deg, #dbe4ef 1px, transparent 1px)");
+      sz.push(`${minor}px ${minor}px`, `${minor}px ${minor}px`);
+    }
+    st.style.backgroundImage = bg.join(", ") || "none";
+    st.style.backgroundSize = sz.join(", ") || "auto";
+  }
+  st.style.backgroundPosition = `${tx}px ${ty}px`;
+  positionMarkers();
+}
+
+function fitView() {
+  const W = $("mapWrap").clientWidth, H = $("mapWrap").clientHeight;
+  if (!W || !H) return;
+  if (mapHasImage && mapImgNatural[0]) {
+    const [iw, ih] = mapImgNatural;
+    view.s = Math.min(W / iw, H / ih);
+    view.tx = (W - iw * view.s) / 2;
+    view.ty = (H - ih * view.s) / 2;
+  } else { view.s = 1; view.tx = 0; view.ty = 0; }
+  applyView();
+}
+
+/* ---- 加载 / 保存 ---- */
+async function loadMap() {
+  const d = await api("/api/map");
+  if (!d) return;
+  mapPoints = Array.isArray(d.points) ? d.points : [];
+  walls = Array.isArray(d.walls) ? d.walls : [];
+  doors = Array.isArray(d.doors) ? d.doors : [];
+  tables = Array.isArray(d.tables) ? d.tables : [];
+  routers = Array.isArray(d.routers) ? d.routers : [];
+  undoStack = [];
+  if (d.origin && typeof d.origin.x === "number") origin = { x: d.origin.x, y: d.origin.y };
+  if (typeof d.gridSize === "number" && d.gridSize >= 5) gridSize = d.gridSize;
+  $("gridSizeIn").value = gridSize;
+  if (typeof d.wallThick === "number" && d.wallThick >= 1) wallThick = d.wallThick;
+  if (d.thickUnit === "px" || d.thickUnit === "m") thickUnit = d.thickUnit;
+  if (typeof d.pxPerM === "number" && d.pxPerM >= 1) pxPerM = d.pxPerM;
+  gridOn = d.gridOn !== false;
+  $("gridOnIn").checked = gridOn;
+  gridMinorOn = d.gridMinorOn !== false;
+  $("gridMinorIn").checked = gridMinorOn;
+  syncThickInput();
+  for (const p of mapPoints) {   // 手动采集: 载入后一律待按键, 清掉残留的采集中状态
+    p.collecting = false; p.burst = null;
+    p.roundsDone = Math.min(4, p.roundsDone | 0);
+  }
+  collectingN = 0;
+  if (d.image) {
+    mapHasImage = true;
+    $("mapImg").src = d.image;
+    $("mapImg").style.display = "block";
+    $("mapStage").classList.remove("gridBg");
+  }
+  renderDrawings(); renderMarkers(); renderPtList(); renderDetail(); applyView();
+  updateShapeCtl();
+}
+function persist() {
+  apiPost("/api/map/data",
+    JSON.stringify({ points: mapPoints, walls, doors, tables, routers, origin, gridSize,
+                     wallThick, thickUnit, pxPerM, gridOn, gridMinorOn }), "application/json");
+}
+let persistTimer = null;
+function persistSoon() {   // 高频采样时节流保存
+  if (persistTimer) return;
+  persistTimer = setTimeout(() => { persistTimer = null; persist(); }, 800);
+}
+
+$("mapImg").addEventListener("load", () => {
+  mapImgNatural = [$("mapImg").naturalWidth, $("mapImg").naturalHeight];
+  fitView();
+});
+
+$("mapFile").addEventListener("change", async e => {
+  const f = e.target.files[0];
+  if (!f) return;
+  if (f.size > 10 * 1024 * 1024) { alert("图片不能超过 10MB"); e.target.value = ""; return; }
+  const buf = await f.arrayBuffer();
+  const res = await apiPost("/api/map/image?name=" + encodeURIComponent(f.name), buf);
+  if (res && res.ok) {
+    mapHasImage = true;
+    $("mapImg").src = "/api/map/image?t=" + Date.now();
+    $("mapImg").style.display = "block";
+    $("mapStage").classList.remove("gridBg");
+  } else alert("地图图片上传失败");
+  e.target.value = "";
+});
+
+$("btnGridBg").onclick = async () => {
+  mapHasImage = false;
+  mapImgNatural = [0, 0];
+  $("mapImg").style.display = "none";
+  $("mapImg").removeAttribute("src");
+  $("mapStage").classList.add("gridBg");
+  fitView();
+  await apiPost("/api/map/image?name=clear", new ArrayBuffer(0));   // 空请求体 = 删除后台图片
+};
+
+/* ---- 工具模式 ---- */
+const TOOL_LABEL = { pan: "平移", add: "添加坐标点", wall: "绘制墙体",
+                     door: "放置门", table: "放置桌", router: "放置路由器",
+                     origin: "设置(0,0)点", array: "阵列放点" };
+const arrCount = () => Math.min(200, Math.max(2, +$("arrNIn").value | 0));
+function setTool(t) {
+  tool = tool === t ? "pan" : t;
+  shapeDraft = null;
+  // 阵列模式: 已选中测点则直接以它为起点, 否则等第一次点击
+  const sp = pointById(selPointId);
+  arrayAnchor = tool === "array" && sp ? { x: sp.x, y: sp.y } : null;
+  renderArrayPreview();
+  $("wallPreview").style.display = "none";
+  $("rectPreview").style.display = "none";
+  for (const [b, n] of [["btnAddPoint", "add"], ["btnWall", "wall"], ["btnDoor", "door"],
+                        ["btnTable", "table"], ["btnRouter", "router"], ["btnOrigin", "origin"],
+                        ["btnArray", "array"]])
+    $(b).classList.toggle("activeTool", tool === n);
+  const ts = $("toolState");
+  ts.textContent = TOOL_LABEL[tool];
+  ts.classList.toggle("on", tool !== "pan");
+  $("mapStage").classList.toggle("adding", tool !== "pan");
+  $("mapStage").classList.toggle("modeArray", tool === "array");
+}
+$("btnAddPoint").onclick = () => setTool("add");
+$("btnArray").onclick = () => setTool("array");
+$("arrNIn").onchange = e => { e.target.value = arrCount(); renderArrayPreview(); };
+window.addEventListener("keydown", e => {   // Esc 取消阵列起点
+  if (e.key === "Escape" && arrayAnchor) { arrayAnchor = null; renderArrayPreview(); }
+});
+$("btnWall").onclick = () => setTool("wall");
+$("btnDoor").onclick = () => setTool("door");
+$("btnTable").onclick = () => setTool("table");
+$("btnRouter").onclick = () => setTool("router");
+$("btnOrigin").onclick = () => setTool("origin");
+$("btnResetView").onclick = fitView;
+$("btnUndoDraw").onclick = () => {
+  const last = undoStack.pop();
+  if (!last) return;
+  if (last.kind === "point") {   // 撤销上一次放点(单个或阵列整批)
+    const objs = last.obj.filter(q => mapPoints.includes(q));
+    if (objs.length) {
+      for (const q of objs) if (q.collecting) collectingN--;
+      mapPoints = mapPoints.filter(q => !objs.includes(q));
+      if (selPointId && objs.some(q => q.id === selPointId)) { selPointId = null; renderDetail(); }
+      persist(); renderMarkers(); renderPtList();
+    }
+    return;
+  }
+  const arr = shapeArr(last.kind);
+  const i = arr.indexOf(last.obj);
+  if (i >= 0) arr.splice(i, 1);
+  if (selShape && selShape.obj === last.obj) selShape = null;
+  updateShapeCtl();
+  persist(); renderDrawings();
+};
+$("btnUndoPt").onclick = () => {
+  const p = mapPoints[mapPoints.length - 1];
+  if (p) delPoint(p.id);   // 复用单点删除: 有已采数据时先确认
+};
+$("btnClearDraw").onclick = () => {
+  if (!walls.length && !doors.length && !tables.length && !routers.length) return;
+  if (!confirm("清空全部墙体 / 门 / 桌 / 路由器?")) return;
+  walls = []; doors = []; tables = []; routers = []; undoStack = [];
+  selShape = null; updateShapeCtl();
+  persist(); renderDrawings();
+};
+$("btnClearPts").onclick = () => {
+  if (!mapPoints.length) return;
+  if (!confirm(`确定清除全部 ${mapPoints.length} 个坐标点? 不可恢复`)) return;
+  mapPoints = []; selPointId = null; collectingN = 0;
+  persist(); renderMarkers(); renderPtList(); renderDetail();
+};
+
+/* ---- 鼠标: 滚轮缩放 / 左键拖动 / 放点 / 画墙 / 定原点 ---- */
+const stageEl = $("mapStage");
+function evtWorld(e) {
+  const r = stageEl.getBoundingClientRect();
+  return screenToWorld(e.clientX - r.left, e.clientY - r.top);
+}
+stageEl.addEventListener("wheel", e => {
+  e.preventDefault();
+  const r = stageEl.getBoundingClientRect();
+  const mx = e.clientX - r.left, my = e.clientY - r.top;
+  const f = e.deltaY < 0 ? 1.18 : 1 / 1.18;
+  const ns = Math.min(25, Math.max(0.15, view.s * f));
+  view.tx = mx - (mx - view.tx) * (ns / view.s);
+  view.ty = my - (my - view.ty) * (ns / view.s);
+  view.s = ns;
+  applyView();
+}, { passive: false });
+
+stageEl.addEventListener("pointerdown", e => {
+  if (e.target.closest(".mk")) return;
+  if (e.button === 1) {   // 中键: 放置/绘制模式下也可平移画面
+    e.preventDefault();   // 顺带屏蔽中键自动滚动等默认行为
+    panState = { px: e.clientX, py: e.clientY, tx: view.tx, ty: view.ty };
+    stageEl.setPointerCapture(e.pointerId);
+    return;
+  }
+  if (e.button !== 0) return;
+  const [wx, wy] = evtWorld(e);
+  if (tool === "wall" || tool === "door" || tool === "table") {
+    shapeDraft = { kind: tool, x1: snapV(wx), y1: snapV(wy), x2: snapV(wx), y2: snapV(wy) };
+    if (tool === "door") {   // 门: 拖出门洞方向线
+      const pv = $("wallPreview");
+      pv.setAttribute("x1", shapeDraft.x1); pv.setAttribute("y1", shapeDraft.y1);
+      pv.setAttribute("x2", shapeDraft.x2); pv.setAttribute("y2", shapeDraft.y2);
+      pv.style.display = "";
+    } else {                  // 墙/桌: 拖出矩形块
+      const rc = $("rectPreview");
+      rc.setAttribute("x", shapeDraft.x1); rc.setAttribute("y", shapeDraft.y1);
+      rc.setAttribute("width", 0); rc.setAttribute("height", 0);
+      rc.style.display = "";
+    }
+    stageEl.setPointerCapture(e.pointerId);
+    return;
+  }
+  if (tool !== "pan") return;            // add / router / origin 在 click 中处理
+  panState = { px: e.clientX, py: e.clientY, tx: view.tx, ty: view.ty };
+  stageEl.setPointerCapture(e.pointerId);
+});
+stageEl.addEventListener("auxclick", e => { if (e.button === 1) e.preventDefault(); });   // 屏蔽中键粘贴/自动滚动
+stageEl.addEventListener("contextmenu", e => {   // 右键: 取消阵列起点
+  e.preventDefault();
+  if (arrayAnchor) { arrayAnchor = null; renderArrayPreview(); }
+});
+stageEl.addEventListener("pointermove", e => {
+  const [mwx, mwy] = evtWorld(e);
+  lastMouse = { x: mwx, y: mwy };
+  if (tool === "array") renderArrayPreview();
+  if (panState) {
+    view.tx = panState.tx + (e.clientX - panState.px);
+    view.ty = panState.ty + (e.clientY - panState.py);
+    applyView();
+  } else if (shapeDraft) {
+    const [wx, wy] = evtWorld(e);
+    shapeDraft.x2 = snapV(wx); shapeDraft.y2 = snapV(wy);
+    if (shapeDraft.kind === "door") {
+      const pv = $("wallPreview");
+      pv.setAttribute("x2", shapeDraft.x2); pv.setAttribute("y2", shapeDraft.y2);
+    } else {
+      const rc = $("rectPreview");
+      rc.setAttribute("x", Math.min(shapeDraft.x1, shapeDraft.x2));
+      rc.setAttribute("y", Math.min(shapeDraft.y1, shapeDraft.y2));
+      rc.setAttribute("width", Math.abs(shapeDraft.x2 - shapeDraft.x1));
+      rc.setAttribute("height", Math.abs(shapeDraft.y2 - shapeDraft.y1));
+    }
+  }
+});
+stageEl.addEventListener("pointerup", () => {
+  if (panState) { panState = null; return; }
+  if (shapeDraft) {
+    const s = shapeDraft;
+    shapeDraft = null;
+    $("wallPreview").style.display = "none";
+    $("rectPreview").style.display = "none";
+    if (s.kind === "wall") {
+      // 拖出实体墙块: 对角定矩形, 短边不足设定墙厚时自动补到墙厚
+      if (Math.hypot(s.x2 - s.x1, s.y2 - s.y1) * view.s >= 4) {
+        let x1 = Math.min(s.x1, s.x2), x2 = Math.max(s.x1, s.x2);
+        let y1 = Math.min(s.y1, s.y2), y2 = Math.max(s.y1, s.y2);
+        if (x2 - x1 < wallThick) { const c = (x1 + x2) / 2; x1 = c - wallThick / 2; x2 = c + wallThick / 2; }
+        if (y2 - y1 < wallThick) { const c = (y1 + y2) / 2; y1 = c - wallThick / 2; y2 = c + wallThick / 2; }
+        const obj = { x1, y1, x2, y2 };
+        walls.push(obj); undoStack.push({ kind: "wall", obj });
+        selShape = { kind: "wall", obj };
+        persist(); renderDrawings(); updateShapeCtl();
+      }
+    } else if (s.kind === "table") {
+      if (Math.abs(s.x2 - s.x1) * view.s >= 4 && Math.abs(s.y2 - s.y1) * view.s >= 4) {
+        const obj = { x1: Math.min(s.x1, s.x2), y1: Math.min(s.y1, s.y2),
+                      x2: Math.max(s.x1, s.x2), y2: Math.max(s.y1, s.y2) };
+        tables.push(obj); undoStack.push({ kind: "table", obj });
+        selShape = { kind: "table", obj };
+        persist(); renderDrawings(); updateShapeCtl();
+      }
+    } else if (Math.hypot(s.x2 - s.x1, s.y2 - s.y1) * view.s >= 4) {
+      doors.push(s); undoStack.push({ kind: "door", obj: s });
+      selShape = { kind: "door", obj: s };   // 新放的门自动选中, 便于马上调朝向
+      persist(); renderDrawings(); updateShapeCtl();
+    }
+  }
+});
+function distToSeg(px, py, ax, ay, bx, by) {
+  const dx = bx - ax, dy = by - ay;
+  const l2 = dx * dx + dy * dy;
+  const t = l2 ? Math.max(0, Math.min(1, ((px - ax) * dx + (py - ay) * dy) / l2)) : 0;
+  return Math.hypot(px - (ax + t * dx), py - (ay + t * dy));
+}
+const shapeArr = kind => ({ wall: walls, door: doors, table: tables, router: routers })[kind];
+function updateShapeCtl() {
+  const on = selShape && shapeArr(selShape.kind).includes(selShape.obj);
+  $("shapeCtl").style.display = on ? "" : "none";
+  if (on) {
+    $("shapeInfo").textContent = selShape.kind === "wall" ? "已选中墙体" :
+      selShape.kind === "door" ? "已选中门" :
+      selShape.kind === "router" ? "已选中路由器" : "已选中桌子";
+    $("btnDoorFlip").style.display = selShape.kind === "door" ? "" : "none";
+    $("btnDoorHinge").style.display = selShape.kind === "door" ? "" : "none";
+  }
+}
+$("btnDoorFlip").onclick = () => {
+  const d = selShape && doors.includes(selShape.obj) ? selShape.obj : null;
+  if (!d) return;
+  d.flip = d.flip ? 0 : 1;
+  persist(); renderDrawings();
+};
+$("btnDoorHinge").onclick = () => {
+  const d = selShape && doors.includes(selShape.obj) ? selShape.obj : null;
+  if (!d) return;
+  d.hinge = d.hinge ? 0 : 1;
+  persist(); renderDrawings();
+};
+$("btnShapeDel").onclick = () => {
+  if (!selShape) return;
+  const arr = shapeArr(selShape.kind);
+  const i = arr.indexOf(selShape.obj);
+  if (i >= 0) arr.splice(i, 1);
+  selShape = null;
+  updateShapeCtl();
+  persist(); renderDrawings();
+};
+
+stageEl.addEventListener("click", e => {
+  // 阵列模式点击不回避测点标记(起点/终点常落在已有测点上)
+  if (e.target.closest(".mk") && tool !== "array") return;
+  const r = stageEl.getBoundingClientRect();
+  const sxp = e.clientX - r.left, syp = e.clientY - r.top;
+  // 命中图形 → 选中 (路由器小目标优先, 其次门、桌、墙; 同类取最上层)
+  // 阵列模式下两次点击都用于定点, 跳过图形选中
+  let hitKind = null, hitObj = null, best = 9;
+  if (tool !== "array") {
+    for (let i = routers.length - 1; i >= 0; i--) {
+      const rt = routers[i];
+      const [cx, cy] = worldToScreen(rt.x, rt.y);
+      if (Math.abs(sxp - cx) <= 24 && Math.abs(syp - cy) <= 24) { hitKind = "router"; hitObj = rt; break; }
+    }
+    if (!hitKind) doors.forEach(d => {
+      const [ax, ay] = worldToScreen(d.x1, d.y1), [bx, by] = worldToScreen(d.x2, d.y2);
+      const dist = distToSeg(sxp, syp, ax, ay, bx, by);
+      if (dist < best) { best = dist; hitKind = "door"; hitObj = d; }
+    });
+    if (!hitKind) {
+      for (let i = tables.length - 1; i >= 0; i--) {
+        const t = tables[i];
+        const [x1, y1] = worldToScreen(Math.min(t.x1, t.x2), Math.min(t.y1, t.y2));
+        const [x2, y2] = worldToScreen(Math.max(t.x1, t.x2), Math.max(t.y1, t.y2));
+        if (sxp >= x1 - 3 && sxp <= x2 + 3 && syp >= y1 - 3 && syp <= y2 + 3) { hitKind = "table"; hitObj = t; break; }
+      }
+    }
+    if (!hitKind) {
+      for (let i = walls.length - 1; i >= 0; i--) {
+        const rc = wallRect(walls[i]);
+        const [x1, y1] = worldToScreen(rc.x, rc.y);
+        const [x2, y2] = worldToScreen(rc.x + rc.w, rc.y + rc.h);
+        if (sxp >= x1 - 2 && sxp <= x2 + 2 && syp >= y1 - 2 && syp <= y2 + 2) { hitKind = "wall"; hitObj = walls[i]; break; }
+      }
+    }
+  }
+  if (hitKind) {
+    selShape = { kind: hitKind, obj: hitObj };
+    selPointId = null;
+    renderDrawings(); renderMarkers(); renderPtList(); renderDetail(); updateShapeCtl();
+    return;
+  }
+  if (selShape) { selShape = null; updateShapeCtl(); renderDrawings(); }
+  const [wx, wy] = evtWorld(e);
+  if (tool === "array") {   // 阵列: 第一次点击定起点, 第二次点击定终点并按个数均匀布点(含两端)
+    const ax = snapV(wx), ay = snapV(wy);
+    if (!arrayAnchor) {
+      arrayAnchor = { x: ax, y: ay };
+      renderArrayPreview();
+    } else if (Math.hypot(ax - arrayAnchor.x, ay - arrayAnchor.y) * view.s >= 4) {
+      const n = arrCount();
+      const batch = [];
+      for (let k = 0; k < n; k++) {
+        const t = n > 1 ? k / (n - 1) : 0;
+        const p = makePointAt(snapV(arrayAnchor.x + (ax - arrayAnchor.x) * t),
+                              snapV(arrayAnchor.y + (ay - arrayAnchor.y) * t));
+        mapPoints.push(p); batch.push(p);
+      }
+      undoStack.push({ kind: "point", obj: batch });   // 阵列整批记为一笔
+      selPointId = mapPoints[mapPoints.length - 1].id;
+      arrayAnchor = null; renderArrayPreview();
+      persist(); renderMarkers(); renderPtList(); renderDetail();
+    }
+    return;
+  }
+  if (tool === "add") { addPointAt(snapV(wx), snapV(wy)); return; }
+  if (tool === "router") { addRouterAt(snapV(wx), snapV(wy)); return; }
+  if (tool === "origin") {
+    origin = { x: snapV(wx), y: snapV(wy) };
+    persist(); positionMarkers(); renderPtList(); renderDetail();
+  }
+});
+
+function addRouterAt(wx, wy) {
+  const obj = { x: wx, y: wy };
+  routers.push(obj);
+  undoStack.push({ kind: "router", obj });
+  selShape = { kind: "router", obj };
+  persist(); renderDrawings(); updateShapeCtl();
+}
+
+/* ---- 测点采样(按数量存储) ---- */
+function setCollecting(p, on) {
+  if (!p.imuSamples) p.imuSamples = [];
+  if (!p.wifiScans) p.wifiScans = [];
+  if (on && !p.collecting) { p.collecting = true; collectingN++; }
+  else if (!on && p.collecting) { p.collecting = false; collectingN--; }
+}
+function makePointAt(wx, wy) {   // 新建测点对象(不入数组, 供单个/阵列共用)
+  return {
+    id: Date.now().toString(36) + Math.floor(Math.random() * 46656).toString(36),
+    name: "P" + nextPointNo(), x: wx, y: wy, time: nowStr(),
+    nImu: Math.max(0, +$("defImuN").value | 0),
+    nWifi: Math.max(0, +$("defWifiN").value | 0),
+    roundsDone: 0, imuSamples: [], wifiScans: [], collecting: false,
+  };
+}
+function addPointAt(wx, wy) {
+  // 手动采集: 放点后不自动采样, 4 次采集全部由详情面板「采集」按键触发
+  const p = makePointAt(wx, wy);
+  mapPoints.push(p);
+  undoStack.push({ kind: "point", obj: [p] });
+  selPointId = p.id;
+  persist(); renderMarkers(); renderPtList(); renderDetail();
+}
+function tapCollect(kind, payload) {   // 采集期内由 onImu / onRssi 调用, 只分发给正在按键采集的测点
+  let dirty = false, finished = false;
+  for (const p of mapPoints) {
+    if (!p.collecting || !p.burst) continue;
+    if (kind === "imu" && p.burst.needImu > 0) {
+      p.imuSamples.push(Object.assign({}, payload, { ori: p.burst.ori }));
+      p.burst.needImu--; dirty = true;
+    } else if (kind === "wifi" && p.burst.needWifi > 0) {
+      p.wifiScans.push(Object.assign({}, payload, { yaw: tgt.yaw, ori: p.burst.ori }));
+      p.burst.needWifi--; dirty = true;
+    } else continue;
+    if (p.burst.needImu <= 0 && p.burst.needWifi <= 0) {   // 本朝向采满 → 本次采集结束
+      p.burst = null;
+      p.roundsDone = Math.min(4, (p.roundsDone | 0) + 1);
+      setCollecting(p, false);
+      p.time = nowStr();
+      finished = true;
+      if (p.id === selPointId) renderDetail();
+    }
+  }
+  if (dirty) { updateCollectBadges(); persistSoon(); }
+  if (finished) renderMarkers();   // 刷新标记上的 k/4 进度徽标
+}
+/* 手动按键采集: 每按一次采一个朝向槽(0°→90°→180°→270°), 按设置条数采满自动结束本次 */
+function captureRound(p) {
+  if (p.collecting) return;                        // 本次还没采满, 不叠加
+  if ((p.roundsDone | 0) >= 4) { alert("该点 4 次采集已完成, 如需重采请先「重置采样」"); return; }
+  const nImu = Math.max(0, p.nImu | 0), nWifi = Math.max(0, p.nWifi | 0);
+  if (!nImu && !nWifi) { alert("每次采集的 IMU 条数与 WiFi 次数均为 0, 请先在下方设置"); return; }
+  if (nWifi && !lastAps.length) { alert("尚未收到 WiFi 扫描数据, 请确认设备已推送 RSSI"); return; }
+  p.burst = { ori: (p.roundsDone % 4) * 90, needImu: nImu, needWifi: nWifi };
+  setCollecting(p, true);
+  persist(); renderDetail(); renderMarkers();
+}
+function progText(p) {
+  return p.burst
+    ? `${p.burst.ori}° IMU ${(p.nImu | 0) - p.burst.needImu}/${p.nImu | 0} · WiFi ${(p.nWifi | 0) - p.burst.needWifi}/${p.nWifi | 0}`
+    : `${Math.min(4, p.roundsDone | 0)}/4 次`;
+}
+function updateCollectBadges() {   // 只改文字, 不重建 DOM, 避免高频重绘
+  for (const p of mapPoints) {
+    if (!p.collecting) continue;
+    const el = document.querySelector(`.mkProg[data-id="${p.id}"]`);
+    if (el) el.textContent = progText(p);
+    if (p.id === selPointId) {
+      const s = $("ptProg");
+      if (s) s.textContent = "采集中 " + progText(p);
+      const b = $("btnCap");
+      if (b && b.disabled) b.textContent = "采集中 " + progText(p);
+    }
+  }
+}
+function nextPointNo() {
+  let mx = 0;
+  for (const p of mapPoints) {
+    const m = /^P(\d+)$/.exec(p.name || "");
+    if (m) mx = Math.max(mx, +m[1]);
+  }
+  return mx + 1;
+}
+function nowStr() { return new Date().toLocaleString("zh-CN", { hour12: false }); }
+function fmtT(ts) { return new Date(ts).toLocaleString("zh-CN", { hour12: false }); }
+
+/* ---- 渲染 ---- */
+function coordText(p) {
+  const rx = (p.x - origin.x) / gridSize, ry = (p.y - origin.y) / gridSize;
+  return `(${rx.toFixed(1)}, ${ry.toFixed(1)})`;
+}
+function positionMarkers() {
+  document.querySelectorAll("#mapMarkers .mk").forEach(el => {
+    const p = pointById(el.dataset.id);
+    if (!p) return;
+    const [sx, sy] = worldToScreen(p.x, p.y);
+    el.style.transform = `translate(${sx}px, ${sy}px)`;
+  });
+  const [ox, oy] = worldToScreen(origin.x, origin.y);
+  $("originMark").style.transform = `translate(${ox}px, ${oy}px)`;
+}
+function wallPoly(w) {   // 沿线段按墙体厚度生成实体矩形四角
+  const dx = w.x2 - w.x1, dy = w.y2 - w.y1;
+  const len = Math.hypot(dx, dy) || 1;
+  const nx = -dy / len * wallThick / 2, ny = dx / len * wallThick / 2;
+  return `${w.x1 + nx},${w.y1 + ny} ${w.x2 + nx},${w.y2 + ny} ${w.x2 - nx},${w.y2 - ny} ${w.x1 - nx},${w.y1 - ny}`;
+}
+function wallRect(w) {   // 墙块的渲染矩形(旧版直线段数据按墙厚展开)
+  let x = Math.min(w.x1, w.x2), y = Math.min(w.y1, w.y2);
+  let ww = Math.abs(w.x2 - w.x1), hh = Math.abs(w.y2 - w.y1);
+  if (ww < 0.5) { x -= wallThick / 2; ww = wallThick; }
+  if (hh < 0.5) { y -= wallThick / 2; hh = wallThick; }
+  return { x, y, w: ww, h: hh };
+}
+function renderArrayPreview() {   // 阵列预览: 起点→鼠标 虚线 + N 个幽灵点 + 个数/间距标注
+  const g = $("arrayG");
+  if (tool !== "array" || !arrayAnchor || !lastMouse) { g.innerHTML = ""; return; }
+  const n = arrCount();
+  const ex = snapV(lastMouse.x), ey = snapV(lastMouse.y);
+  const dx = ex - arrayAnchor.x, dy = ey - arrayAnchor.y;
+  if (Math.hypot(dx, dy) * view.s < 4) { g.innerHTML = ""; return; }
+  let h = `<line x1="${arrayAnchor.x}" y1="${arrayAnchor.y}" x2="${ex}" y2="${ey}"
+    stroke="#0284c7" stroke-width="1.5" stroke-dasharray="6 4" vector-effect="non-scaling-stroke"/>`;
+  for (let k = 0; k < n; k++) {
+    const t = n > 1 ? k / (n - 1) : 0;
+    h += `<circle cx="${arrayAnchor.x + dx * t}" cy="${arrayAnchor.y + dy * t}" r="5"
+      fill="rgba(2,132,199,.2)" stroke="#0284c7" stroke-width="1" vector-effect="non-scaling-stroke"/>`;
+  }
+  const stepM = (Math.hypot(dx, dy) / Math.max(1, n - 1)) / pxPerM;
+  h += `<text x="${arrayAnchor.x + dx / 2}" y="${arrayAnchor.y + dy / 2 - 10 / view.s}"
+    font-size="${11 / view.s}" text-anchor="middle" fill="#0284c7">${n} 点 · 间距 ${stepM.toFixed(2)} m</text>`;
+  g.innerHTML = h;
+}
+function renderDrawings() {   // 桌 → 墙(实体) → 门(门洞+门叶+弧线) 依次叠加
+  // 简约风: 中性灰阶 + 细线, 去掉木色/棕色/青色等装饰色, 仅选中态用主题蓝
+  let h = "";
+  for (const t of tables) {   // 桌: 家具木色
+    const sel = selShape && selShape.kind === "table" && selShape.obj === t;
+    h += `<rect x="${Math.min(t.x1, t.x2)}" y="${Math.min(t.y1, t.y2)}"
+      width="${Math.abs(t.x2 - t.x1)}" height="${Math.abs(t.y2 - t.y1)}"
+      fill="rgba(202,168,120,.4)" stroke="${sel ? "#0284c7" : "#a16207"}"
+      stroke-width="${sel ? 2.5 : 2}" rx="2" vector-effect="non-scaling-stroke"/>`;
+  }
+  for (const w of walls) {   // 墙: 纯色块, 无描边
+    const rc = wallRect(w);
+    const sel = selShape && selShape.kind === "wall" && selShape.obj === w;
+    h += `<rect x="${rc.x}" y="${rc.y}" width="${rc.w}" height="${rc.h}"
+      fill="#5b6878" stroke="${sel ? "#0284c7" : "none"}"
+      stroke-width="2" vector-effect="non-scaling-stroke"/>`;
+  }
+  for (const r of routers) {   // 路由器(AP): 信号符号(圆点 + 两道同心弧)
+    const selR = selShape && selShape.kind === "router" && selShape.obj === r;
+    const col = selR ? "#0284c7" : "#64748b";
+    h += `<circle cx="${r.x}" cy="${r.y + 4}" r="3.5" fill="${col}"/>`
+      + `<path d="M ${r.x - 8.5} ${r.y + 4} A 8.5 8.5 0 0 1 ${r.x + 8.5} ${r.y + 4}" fill="none"
+      stroke="${col}" stroke-width="2" stroke-linecap="round" vector-effect="non-scaling-stroke"/>`
+      + `<path d="M ${r.x - 15} ${r.y + 4} A 15 15 0 0 1 ${r.x + 15} ${r.y + 4}" fill="none"
+      stroke="${col}" stroke-width="2" stroke-linecap="round" vector-effect="non-scaling-stroke"/>`;
+  }
+  for (const d of doors) {   // 门: A→B 为门洞方向; flip=开门侧, hinge=门铰端(A/B)
+    const flip = d.flip ? -1 : 1, hingeA = !d.hinge;
+    const sel = selShape && selShape.kind === "door" && selShape.obj === d;
+    const hx = hingeA ? d.x1 : d.x2, hy = hingeA ? d.y1 : d.y2;
+    const ox = hingeA ? d.x2 : d.x1, oy = hingeA ? d.y2 : d.y1;
+    const cx = hx - (oy - hy) * flip, cy = hy + (ox - hx) * flip;
+    const r = Math.hypot(ox - hx, oy - hy);
+    const leaf = sel ? "#0284c7" : "#b45309";
+    h += `<polygon points="${wallPoly(d)}" fill="#eef2f7" stroke="${sel ? "#0284c7" : "#94a3b8"}"
+      stroke-width="1" vector-effect="non-scaling-stroke"/>`
+      + `<line x1="${hx}" y1="${hy}" x2="${cx}" y2="${cy}" stroke="${leaf}"
+      stroke-width="3" stroke-linecap="round" vector-effect="non-scaling-stroke"/>`
+      + `<path d="M ${ox} ${oy} A ${r} ${r} 0 0 ${flip > 0 ? 1 : 0} ${cx} ${cy}" fill="none"
+      stroke="${leaf}" stroke-width="1.5" vector-effect="non-scaling-stroke"/>`;
+  }
+  $("wallG").innerHTML = h;
+}
+function renderMarkers() {
+  $("mapMarkers").innerHTML = mapPoints.map((p, i) => `
+    <div class="mk${p.id === selPointId ? " sel" : ""}" data-id="${p.id}">
+      <div class="mkDot" title="${escH(p.name)} ${coordText(p)}">${i + 1}</div>
+      ${p.collecting || (p.roundsDone | 0) > 0 ? `<div class="mkProg" data-id="${p.id}">${progText(p)}</div>` : ""}
+    </div>`).join("");
+  document.querySelectorAll("#mapMarkers .mk").forEach(el => {
+    el.onclick = ev => { ev.stopPropagation(); selectPoint(el.dataset.id); };
+  });
+  positionMarkers();
+  updateMapStat();
+}
+function updateMapStat() {
+  $("mapStat").textContent = mapPoints.length + " 个坐标点";
+  $("ptCount").textContent = mapPoints.length;
+}
+function renderPtList() {
+  const box = $("ptList");
+  if (!mapPoints.length) { box.innerHTML = '<div class="empty">暂无坐标点</div>'; return; }
+  box.innerHTML = mapPoints.map((p, i) => `
+    <div class="ptItem${p.id === selPointId ? " sel" : ""}" data-id="${p.id}">
+      <span class="ptNo">${i + 1}</span>
+      <span class="ptName">${escH(p.name)}</span>
+      <span class="ptXY">${coordText(p)}</span>
+      <button class="ptDel" title="删除该测点">×</button>
+    </div>`).join("");
+  box.querySelectorAll(".ptItem").forEach(el => {
+    el.onclick = () => selectPoint(el.dataset.id);
+    el.querySelector(".ptDel").onclick = ev => { ev.stopPropagation(); delPoint(el.dataset.id); };
+  });
+}
+function selectPoint(id) {
+  selPointId = id;
+  selShape = null; updateShapeCtl();
+  renderMarkers(); renderPtList(); renderDetail(); renderDrawings();
+}
+function delPoint(id) {   // 删除单个测点; 已采到数据时二次确认
+  const i = mapPoints.findIndex(q => q.id === id);
+  if (i < 0) return;
+  const p = mapPoints[i];
+  const hasData = (p.imuSamples || []).length || (p.wifiScans || []).length || (p.roundsDone | 0);
+  if (hasData && !confirm(`删除测点「${p.name}」及其已采数据?`)) return;
+  if (p.collecting) collectingN--;
+  mapPoints.splice(i, 1);
+  if (selPointId === id) { selPointId = null; renderDetail(); }
+  persist(); renderMarkers(); renderPtList();
+}
+
+/* ---- 统计(均值) ---- */
+function mean(a) { return a.length ? a.reduce((x, y) => x + y, 0) / a.length : null; }
+function circMeanDeg(a) {
+  let sx = 0, sy = 0;
+  for (const v of a) { sx += Math.sin(v * Math.PI / 180); sy += Math.cos(v * Math.PI / 180); }
+  return (Math.atan2(sx, sy) * 180 / Math.PI + 360) % 360;
+}
+function imuAvg(p) {
+  const s = p.imuSamples || [];
+  if (!s.length) return null;
+  return {
+    yaw: circMeanDeg(s.map(x => x.yaw)),
+    pitch: mean(s.map(x => x.pitch)), roll: mean(s.map(x => x.roll)),
+    mx: mean(s.map(x => x.mag[0])), my: mean(s.map(x => x.mag[1])), mz: mean(s.map(x => x.mag[2])),
+  };
+}
+function wifiAvg(p) {
+  const m = new Map();
+  for (const sc of p.wifiScans || [])
+    for (const a of (sc.aps || [])) {
+      if (!m.has(a.name)) m.set(a.name, []);
+      m.get(a.name).push(+a.rssi);
+    }
+  return [...m.entries()].map(([name, rs]) => ({ name, rssi: Math.round(mean(rs)) }));
+}
+
+function renderDetail() {
+  const box = $("ptDetail");
+  const p = pointById(selPointId);
+  $("btnResetPt").disabled = !p;
+  $("btnDelPt").disabled = !p;
+  if (!p) {
+    box.innerHTML = '<div class="empty">点击地图上的圆点查看该点传感器数据</div>';
+    $("ptTime").textContent = "";
+    return;
+  }
+  $("ptTime").textContent = p.time || "";
+  const ia = imuAvg(p), wa = wifiAvg(p);
+  const done = Math.min(4, p.roundsDone | 0);
+  const chips = [];
+  for (let k = 0; k < 4; k++) {
+    const isDone = k < done;
+    chips.push(`<span class="oriChip${isDone ? " done" : (k === done && !p.collecting ? " next" : "")}"
+      data-k="${k}">${k * 90}°${isDone ? " ✓" : ""}</span>`);
+  }
+  const f1 = v => (typeof v === "number" && isFinite(v) ? v.toFixed(1) : "--");
+  const b = ia ? Math.hypot(ia.mx, ia.my, ia.mz).toFixed(2) : "--";
+  const apRows = (wa && wa.length)
+    ? wa.map(a => {
+        const c = rssiColor(a.rssi);
+        return `<tr><td class="name" title="${escH(a.name)}">${escH(a.name)} ×${(p.wifiScans || []).length}</td>
+          <td class="rssi" style="color:${c}">${a.rssi} dBm</td></tr>`;
+      }).join("")
+    : '<tr><td colspan="2" class="empty">无 AP 数据</td></tr>';
+  box.innerHTML = `
+    <div class="ptHead">
+      <input id="ptName" class="txt grow" value="${escH(p.name)}" maxlength="30" title="修改名称后自动保存">
+      <span class="ptCoord">${coordText(p)}</span>
+    </div>
+    <div class="frmRow"><span class="frmLab">每次采集 IMU 条数</span>
+      <input id="ptNImu" class="txt" type="number" min="0" step="1" value="${p.nImu | 0}"></div>
+    <div class="frmRow"><span class="frmLab">每次采集 WiFi 扫描次数</span>
+      <input id="ptNWifi" class="txt" type="number" min="0" step="1" value="${p.nWifi | 0}"></div>
+    <div class="ptProg" id="ptProg">${p.collecting
+      ? "采集中 " + progText(p)
+      : `已采 ${done}/4 次 · IMU ${(p.imuSamples || []).length} 条 · WiFi ${(p.wifiScans || []).length} 次扫描`}</div>
+    <div class="oriChips">${chips.join("")}</div>
+    <button class="btn primary" id="btnCap" style="width:100%"
+      ${p.collecting || done >= 4 ? "disabled" : ""}>${p.collecting
+        ? "采集中 " + progText(p)
+        : done >= 4 ? "已完成 4/4 次采集"
+        : `采集（第 ${done + 1}/4 次 · 朝向 ${done * 90}°）`}</button>
+    <div class="ptGrid">
+      <div class="stat"><div class="k">Yaw 均值</div><div class="v">${f1(ia && ia.yaw)}°</div></div>
+      <div class="stat"><div class="k">Pitch 均值</div><div class="v">${f1(ia && ia.pitch)}°</div></div>
+      <div class="stat"><div class="k">Roll 均值</div><div class="v">${f1(ia && ia.roll)}°</div></div>
+      <div class="stat"><div class="k">|B| 均值</div><div class="v">${b} µT</div></div>
+    </div>
+    <table class="ptAp"><tbody>${apRows}</tbody></table>`;
+  $("ptName").onchange = e => {
+    const v = e.target.value.trim();
+    if (v) { p.name = v; persist(); renderPtList(); renderMarkers(); }
+    else e.target.value = p.name;
+  };
+  $("ptNImu").onchange = e => {
+    p.nImu = Math.max(0, +e.target.value | 0);   // 只改设置, 不触发采集
+    persist(); renderMarkers();
+  };
+  $("ptNWifi").onchange = e => {
+    p.nWifi = Math.max(0, +e.target.value | 0);
+    persist(); renderMarkers();
+  };
+  const capBtn = $("btnCap");
+  if (capBtn && !capBtn.disabled) capBtn.onclick = () => captureRound(p);
+  const nextChip = box.querySelector(".oriChip.next");   // 点下一个朝向槽位 = 按采集
+  if (nextChip) nextChip.onclick = () => captureRound(p);
+}
+
+$("btnResetPt").onclick = () => {
+  const p = pointById(selPointId);
+  if (!p) return;
+  if (!confirm("清空该点已采数据, 从第 1 次(朝向 0°)重新采集?")) return;
+  p.imuSamples = []; p.wifiScans = [];
+  p.roundsDone = 0; p.burst = null;
+  setCollecting(p, false);
+  persist(); renderDetail(); renderMarkers();
+};
+
+$("btnDelPt").onclick = () => delPoint(selPointId);
+
+/* ---- 网格 / 吸附设置 ---- */
+$("gridSizeIn").onchange = e => {
+  gridSize = Math.min(500, Math.max(10, +e.target.value || 50));
+  e.target.value = gridSize;
+  persist(); applyView(); renderMarkers(); renderPtList(); renderDetail();
+};
+$("gridOnIn").onchange = e => { gridOn = e.target.checked; applyView(); persist(); };
+$("gridMinorIn").onchange = e => { gridMinorOn = e.target.checked; applyView(); persist(); };
+$("snapOn").onchange = e => { snapOn = e.target.checked; };
+
+/* ---- 墙体厚度 / 单位(px 或 m, m 最小 0.1) ---- */
+function syncThickInput() {
+  $("thickUnitIn").value = thickUnit;
+  $("pxPerMIn").value = pxPerM;
+  $("wallThickIn").value = thickUnit === "m" ? +(wallThick / pxPerM).toFixed(2) : +wallThick.toFixed(1);
+  $("wallThickIn").min = thickUnit === "m" ? "0.1" : "1";
+}
+function applyThickInput() {
+  let v = +$("wallThickIn").value || 0;
+  if (thickUnit === "m") v = Math.max(0.1, v) * pxPerM;   // 米最小 0.1m
+  else v = Math.max(1, v);                                 // 像素最小 1px
+  wallThick = Math.round(v * 10) / 10;
+  syncThickInput();
+  persist(); renderDrawings();
+}
+$("wallThickIn").onchange = applyThickInput;
+$("thickUnitIn").onchange = e => { thickUnit = e.target.value; applyThickInput(); };
+$("pxPerMIn").onchange = e => {
+  pxPerM = Math.max(1, Math.round(+$("pxPerMIn").value || 50));
+  applyView();                              // 每米加粗线间距随比例变化
+  if (thickUnit === "m") applyThickInput(); // 换算比例变了, 米厚度重新折算 px
+  else persist();
+};
+
+/* ---- 绘图模板(墙/门/桌组合, 存服务器) ---- */
+let templates = [];
+async function loadTemplates() {
+  const t = await api("/api/map/templates");
+  templates = Array.isArray(t) ? t : [];
+  renderTplSel();
+}
+function renderTplSel() {
+  $("tplCount").textContent = templates.length + " 个";
+  $("tplSel").innerHTML = templates.length
+    ? templates.map((t, i) =>
+        `<option value="${i}">${escH(t.name)}（墙${(t.walls || []).length}/门${(t.doors || []).length}/桌${(t.tables || []).length}/路由${(t.routers || []).length}）</option>`).join("")
+    : '<option value="">暂无模板</option>';
+}
+$("btnTplSave").onclick = async () => {
+  if (!walls.length && !doors.length && !tables.length && !routers.length) { alert("当前没有墙/门/桌/路由器可保存"); return; }
+  const name = prompt("模板名称:", "布局1");
+  if (!name || !name.trim()) return;
+  const res = await apiPost("/api/map/templates", JSON.stringify({
+    action: "save", name: name.trim().slice(0, 40), walls, doors, tables, routers,
+  }), "application/json");
+  if (res && res.ok) loadTemplates();
+  else alert("模板保存失败");
+};
+$("btnTplApply").onclick = () => {
+  const t = templates[+$("tplSel").value];
+  if (!t) { alert("请先选择模板"); return; }
+  if (!confirm(`用模板「${t.name}」替换当前全部墙/门/桌?`)) return;
+  walls = JSON.parse(JSON.stringify(t.walls || []));
+  doors = JSON.parse(JSON.stringify(t.doors || []));
+  tables = JSON.parse(JSON.stringify(t.tables || []));
+  routers = JSON.parse(JSON.stringify(t.routers || []));
+  undoStack = [];
+  selShape = null; updateShapeCtl();
+  persist(); renderDrawings();
+};
+$("btnTplDel").onclick = async () => {
+  const t = templates[+$("tplSel").value];
+  if (!t) { alert("请先选择模板"); return; }
+  if (!confirm(`删除模板「${t.name}」?`)) return;
+  const res = await apiPost("/api/map/templates",
+    JSON.stringify({ action: "del", name: t.name }), "application/json");
+  if (res && res.ok) loadTemplates();
+};
+
+/* ---- 导出 CSV ---- */
+function downloadCsv(lines, prefix) {
+  const blob = new Blob(["\ufeff" + lines.join("\r\n")], { type: "text/csv;charset=utf-8" });
+  const aEl = document.createElement("a");
+  aEl.href = URL.createObjectURL(blob);
+  aEl.download = prefix + new Date().toISOString().slice(0, 19).replace(/[-:T]/g, "") + ".csv";
+  document.body.appendChild(aEl);
+  aEl.click();
+  aEl.remove();
+}
+const csvEsc = v => { v = v == null ? "" : String(v);
+  return /[",\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v; };
+const f1 = v => (typeof v === "number" && isFinite(v) ? v.toFixed(1) : "");
+const f2 = v => (typeof v === "number" && isFinite(v) ? v.toFixed(2) : "");
+
+$("btnExportCsv").onclick = () => {   // 汇总: 每测点一行, 采样均值
+  if (!mapPoints.length) { alert("暂无坐标点, 请先在地图上添加"); return; }
+  const apNames = [];
+  for (const p of mapPoints)
+    for (const a of wifiAvg(p))
+      if (!apNames.includes(a.name)) apNames.push(a.name);
+  const head = ["编号", "名称", "相对X(格)", "相对Y(格)", "图上坐标(px)", "记录时间", "采集次数",
+                "IMU样本数", "WiFi扫描数", "Yaw(°)", "Pitch(°)", "Roll(°)",
+                "MagX(µT)", "MagY(µT)", "MagZ(µT)", "|B|(µT)",
+                ...apNames.map(n => n + " 平均RSSI(dBm)")];
+  const lines = [head.map(csvEsc).join(",")];
+  mapPoints.forEach((p, i) => {
+    const ia = imuAvg(p), wap = wifiAvg(p);
+    const b = ia ? Math.hypot(ia.mx, ia.my, ia.mz).toFixed(2) : "";
+    const rx = (p.x - origin.x) / gridSize, ry = (p.y - origin.y) / gridSize;
+    lines.push([
+      i + 1, p.name, rx.toFixed(1), ry.toFixed(1),
+      `${Math.round(p.x)},${Math.round(p.y)}`, p.time || "",
+      Math.min(4, p.roundsDone | 0),
+      (p.imuSamples || []).length, (p.wifiScans || []).length,
+      f1(ia && ia.yaw), f1(ia && ia.pitch), f1(ia && ia.roll),
+      f2(ia && ia.mx), f2(ia && ia.my), f2(ia && ia.mz), b,
+      ...apNames.map(n => { const a = wap.find(q => q.name === n); return a ? a.rssi : ""; }),
+    ].map(csvEsc).join(","));
+  });
+  downloadCsv(lines, "map_summary_");
+};
+
+$("btnExportRaw").onclick = () => {   // 逐条: 每条 IMU 采样 / 每次 WiFi 扫描一行
+  if (!mapPoints.length) { alert("暂无坐标点, 请先在地图上添加"); return; }
+  const lines = ["[姿态逐条数据]",
+    ["编号", "名称", "样本#", "朝向(°)", "时间", "Yaw(°)", "Pitch(°)", "Roll(°)",
+     "MagX(µT)", "MagY(µT)", "MagZ(µT)"].map(csvEsc).join(",")];
+  mapPoints.forEach((p, i) => {
+    (p.imuSamples || []).forEach((s, j) => {
+      lines.push([i + 1, p.name, j + 1,
+        typeof s.ori === "number" ? s.ori : "",
+        fmtT(s.t), s.yaw, s.pitch, s.roll,
+        s.mag[0], s.mag[1], s.mag[2]].map(csvEsc).join(","));
+    });
+  });
+  lines.push("", "[WiFi逐条数据]",
+    ["编号", "名称", "扫描#", "朝向(°)", "实测Yaw(°)", "时间", "AP名称", "RSSI(dBm)"].map(csvEsc).join(","));
+  mapPoints.forEach((p, i) => {
+    (p.wifiScans || []).forEach((sc, j) => {
+      for (const a of (sc.aps || []))
+        lines.push([i + 1, p.name, j + 1,
+          typeof sc.ori === "number" ? sc.ori : "",
+          typeof sc.yaw === "number" ? +sc.yaw.toFixed(1) : "",
+          fmtT(sc.t), a.name, a.rssi].map(csvEsc).join(","));
+    });
+  });
+  downloadCsv(lines, "map_raw_");
+};
+
+loadMap();
+loadTemplates();
+
+/* 周期刷新状态徽标 / 统计 */
+setInterval(() => {
+  const now = Date.now();
+  const imuAge = lastImuTs ? (now - lastImuTs) / 1000 : null;
+  const rssiAge = lastRssiTs ? (now - lastRssiTs) / 1000 : null;
+  const badge = (age, warn, bad) => !sseOk ? ["bad", "SSE断开"] :
+    age == null ? ["bad", "无数据"] : age < warn ? ["ok", fmt1(age) + "s 前"] :
+    age < bad ? ["warn", fmt1(age) + "s 前"] : ["bad", fmt1(age) + "s 未更新"];
+  let [c, t] = badge(imuAge, 3, 10);  $("dotImu").className = "dot " + c; $("imuBadge").textContent = t;
+  [c, t] = badge(rssiAge, 6, 15);     $("dotRssi").className = "dot " + c; $("rssiBadge").textContent = t;
+  $("ageImu").textContent = imuAge == null ? "--" : fmt1(imuAge) + "s 前";
+  $("ageRssi").textContent = rssiAge == null ? "--" : fmt1(rssiAge) + "s 前";
+  $("stImu").textContent = stats.imuCount + " 条 · " + fmt1(stats.imuRate) + "/s";
+  $("stRssi").textContent = stats.rssiCount + " 条 · " + fmt1(stats.rssiRate) + "/s";
+  $("stUp").textContent = bootMs == null ? "--" : (bootMs / 1000).toFixed(0) + " s";
+  $("stTime").textContent = new Date().toLocaleTimeString("zh-CN", { hour12: false });
+  renderChart(lastAps);
+}, 1000);
+refreshCollect();
+setInterval(refreshCollect, 1000);
+
+/* ================= Three.js 3D 场景 ================= */
+/* 坐标约定:
+   世界: Y 上, -Z 北(磁北), +X 东; 1 单位 = 1 cm
+   机体系(FRD): X 前, Y 右, Z 下 (与 mag 数据一致)
+   姿态: yaw 绕天轴 — 逆时针为正(实测板子顺时针转时 yaw 减小, 模型同向:
+         rotation.y 直接取 +yaw, 板子顺时针转模型也顺时针转),
+         pitch 抬头为正, roll 右倾为正 */
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0xe6edf5);
+scene.fog = new THREE.Fog(0xe6edf5, 90, 220);
+
+const camera = new THREE.PerspectiveCamera(50, 1, 0.1, 500);
+camera.position.set(26, 22, 36);
+
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setPixelRatio(window.devicePixelRatio || 1);
+$("scene").appendChild(renderer.domElement);
+
+const controls = new THREE.OrbitControls(camera, renderer.domElement);
+controls.target.set(0, 2, 0);
+controls.enableDamping = true;
+controls.dampingFactor = 0.08;
+controls.maxPolarAngle = Math.PI * 0.495;
+controls.minDistance = 12;
+controls.maxDistance = 160;
+
+scene.add(new THREE.HemisphereLight(0xffffff, 0x94a8bd, 1.0));
+const sun = new THREE.DirectionalLight(0xffffff, 0.9);
+sun.position.set(18, 30, 12);
+scene.add(sun);
+
+/* 地面网格 + 罗盘 */
+const grid = new THREE.GridHelper(80, 40, 0xb6c5d6, 0xd9e2ec);
+grid.position.y = -0.02;
+scene.add(grid);
+
+function textSprite(text, color, size = 3) {
+  const cv = document.createElement("canvas");
+  cv.width = cv.height = 128;
+  const c = cv.getContext("2d");
+  c.font = "bold 84px Arial"; c.textAlign = "center"; c.textBaseline = "middle";
+  c.fillStyle = color; c.fillText(text, 64, 70);
+  const tex = new THREE.CanvasTexture(cv);
+  const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true }));
+  sp.scale.set(size, size, 1);
+  return sp;
+}
+const R = 22;
+const north = new THREE.ArrowHelper(new THREE.Vector3(0, 0, -1), new THREE.Vector3(0, 0.05, 0), R, 0x059669, 2.4, 1.4);
+scene.add(north);
+const lblN = textSprite("N", "#059669", 4); lblN.position.set(0, 0.5, -R - 3.4); scene.add(lblN);
+const lblE = textSprite("E", "#64748b", 3.4); lblE.position.set(R + 2.8, 0.5, 0); scene.add(lblE);
+const lblS = textSprite("S", "#64748b", 3.4); lblS.position.set(0, 0.5, R + 2.8); scene.add(lblS);
+const lblW = textSprite("W", "#64748b", 3.4); lblW.position.set(-R - 2.8, 0.5, 0); scene.add(lblW);
+
+/* 设备模型: 父组承载姿态欧拉角, 子组为机体系(FRD)固定映射 */
+const attitudeGroup = new THREE.Group();
+scene.add(attitudeGroup);
+const bodyGroup = new THREE.Group();
+// FRD -> 世界(机头朝北): X前->-Z, Y右->+X, Z下->-Y
+bodyGroup.quaternion.setFromRotationMatrix(new THREE.Matrix4().makeBasis(
+  new THREE.Vector3(0, 0, -1), new THREE.Vector3(1, 0, 0), new THREE.Vector3(0, -1, 0)));
+attitudeGroup.add(bodyGroup);
+
+// 10x10x3: 机体系 X 前 10, Y 右 10, Z 厚 3
+const screenTex = (() => {
+  const cv = document.createElement("canvas");
+  cv.width = cv.height = 256;
+  const c = cv.getContext("2d");
+  const g = c.createLinearGradient(0, 0, 256, 256);
+  g.addColorStop(0, "#0c2233"); g.addColorStop(1, "#0a1a28");
+  c.fillStyle = g; c.fillRect(0, 0, 256, 256);
+  c.strokeStyle = "#1e4a66"; c.lineWidth = 2;
+  for (let i = 32; i < 256; i += 32) {
+    c.beginPath(); c.moveTo(i, 0); c.lineTo(i, 256); c.stroke();
+    c.beginPath(); c.moveTo(0, i); c.lineTo(256, i); c.stroke();
+  }
+  c.fillStyle = "#38bdf8"; c.font = "bold 30px Consolas"; c.textAlign = "center";
+  c.fillText("SENSOR", 128, 118); c.fillText("NODE", 128, 152);
+  c.strokeStyle = "#38bdf8"; c.strokeRect(10, 10, 236, 236);
+  return new THREE.CanvasTexture(cv);
+})();
+
+const faceMat = (color) => new THREE.MeshStandardMaterial({ color, roughness: 0.55, metalness: 0.15 });
+const screenMat = new THREE.MeshStandardMaterial({ map: screenTex, roughness: 0.35, metalness: 0.1 });
+// BoxGeometry 材质顺序: +x, -x, +y, -y, +z, -z ; 机体系 -Z 为顶面
+const box = new THREE.Mesh(
+  new THREE.BoxGeometry(10, 10, 3),
+  [faceMat(0x14324a), faceMat(0x14324a), faceMat(0x1a3d59), faceMat(0x1a3d59),
+   faceMat(0x0f2940), screenMat]
+);
+bodyGroup.add(box);
+bodyGroup.add(new THREE.LineSegments(
+  new THREE.EdgesGeometry(box.geometry),
+  new THREE.LineBasicMaterial({ color: 0x4cc3ff, transparent: true, opacity: 0.55 })
+));
+
+// 机头指示(橙色锥, 指向机体系 +X)
+const nose = new THREE.Mesh(
+  new THREE.ConeGeometry(1.1, 2.6, 4),
+  new THREE.MeshStandardMaterial({ color: 0xf59e0b, emissive: 0x7a4a06, roughness: 0.4 })
+);
+nose.rotation.z = -Math.PI / 2;
+nose.position.set(4.1, 0, -1.6);
+bodyGroup.add(nose);
+
+// 磁场箭头(机体系, 随设备一起转); 关闭深度测试使其穿过盒体可见
+const magArrow = new THREE.ArrowHelper(
+  new THREE.Vector3(0, 1, 0), new THREE.Vector3(0, 0, 0), 12, 0xef4444, 1.8, 1.0);
+magArrow.line.material.depthTest = false;
+magArrow.cone.material.depthTest = false;
+magArrow.line.renderOrder = 999;
+magArrow.cone.renderOrder = 999;
+bodyGroup.add(magArrow);
+const magOrigin = new THREE.Mesh(
+  new THREE.SphereGeometry(0.55, 12, 12),
+  new THREE.MeshBasicMaterial({ color: 0xef4444, depthTest: false }));
+magOrigin.renderOrder = 999;
+bodyGroup.add(magOrigin);
+
+/* 自适应尺寸 */
+function resize() {
+  const wrap = $("sceneWrap");
+  const w = wrap.clientWidth, h = wrap.clientHeight;
+  if (!w || !h) return;
+  camera.aspect = w / h;
+  camera.updateProjectionMatrix();
+  renderer.setSize(w, h);
+}
+new ResizeObserver(resize).observe($("sceneWrap"));
+resize();
+
+/* 姿态平滑(含 yaw 环绕) */
+function lerpAngle(a, b, t) {
+  const d = ((b - a + 540) % 360) - 180;
+  return a + d * t;
+}
+function animate() {
+  requestAnimationFrame(animate);
+  cur.yaw = lerpAngle(cur.yaw, tgt.yaw, 0.18);
+  cur.pitch += (tgt.pitch - cur.pitch) * 0.18;
+  cur.roll += (tgt.roll - cur.roll) * 0.18;
+  attitudeGroup.rotation.set(
+    THREE.MathUtils.degToRad(cur.pitch),
+    THREE.MathUtils.degToRad(cur.yaw),
+    THREE.MathUtils.degToRad(-cur.roll),
+    "YXZ");
+  const m = tgt.mag, mag = Math.hypot(m[0], m[1], m[2]);
+  if (mag > 0.01) {
+    magArrow.setDirection(new THREE.Vector3(m[0], m[1], m[2]).normalize());
+    magArrow.setLength(Math.min(16, Math.max(3, mag * 0.35)), 1.9, 1.1);
+  }
+  controls.update();
+  renderer.render(scene, camera);
+}
+animate();
+</script>
+</body>
+</html>
