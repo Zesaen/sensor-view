@@ -1,6 +1,8 @@
 #!/bin/bash
 # 采集 GET 接口金样: tests/capture_golden.sh <输出目录>
 # 用法: 重构前 capture_golden.sh tests/golden ; 重构后 capture_golden.sh /tmp/golden2 再 diff -r
+# 注意: CDP 测试会真实打开/保存地图 → maps.json 的 updated/opened 时间戳随之变化。
+# 金样对比应在跑 CDP 之前进行, 或忽略这两字段; 图形/测点数量等实质内容不应有差异。
 set -e
 BASE=http://127.0.0.1:8888
 OUT="${1:-tests/golden}"
