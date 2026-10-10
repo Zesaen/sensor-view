@@ -1,0 +1,161 @@
+/* 基础: 设计变量/页面骨架/顶栏/工具栏/卡片/视图标签/对话框/响应式 (拆自 index.html) */
+  /* ============ 科研数据纸风格: 高对比 · 直角 · 黑白灰 + 钴蓝强调 ============ */
+  :root {
+    --bg: #e8eaed;
+    --card: #ffffff;
+    --card2: #f2f4f7;
+    --border: #23272e;        /* 结构性近黑边框 */
+    --rule: #c3cad3;          /* 内部细分割线 */
+    --text: #101317;
+    --muted: #454e59;
+    --accent: #0047ab;
+    --accent-deep: #00337a;
+    --green: #0b6b2a;
+    --yellow: #8a6100;
+    --red: #b91c1c;
+    --mono: "SF Mono", "Cascadia Code", "JetBrains Mono", Consolas, monospace;
+    /* emil-design-eng: UI 交互用强 ease-out, 屏内移动用强 ease-in-out */
+    --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+    --ease-in-out: cubic-bezier(0.77, 0, 0.175, 1);
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; }
+  body {
+    background: var(--bg); color: var(--text);
+    font-family: "PingFang SC", "Microsoft YaHei", "Segoe UI", system-ui, sans-serif;
+    font-size: 14px; overflow: hidden;
+    -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility;
+  }
+  /* 方形滚动条 */
+  ::-webkit-scrollbar { width: 10px; height: 10px; }
+  ::-webkit-scrollbar-track { background: #dfe3e8; }
+  ::-webkit-scrollbar-thumb { background: #454e59; border: 2px solid #dfe3e8; }
+  ::-webkit-scrollbar-thumb:hover { background: #16181d; }
+
+  /* ---- 顶栏: 黑色仪器条 ---- */
+  header {
+    height: 52px; display: flex; align-items: center; gap: 16px;
+    padding: 0 16px;
+    background: var(--border); color: #fff;
+    border-bottom: 3px solid var(--accent);
+  }
+  header h1 { font-size: 16px; font-weight: 700; letter-spacing: .05em; color: #fff; }
+  header h1 span { color: #9aa3ad; font-weight: 400; }
+  .badges { display: flex; gap: 8px; margin-left: auto; flex-wrap: wrap; }
+  .badge {
+    display: flex; align-items: center; gap: 6px; padding: 4px 10px;
+    border: 1px solid #454e59; background: #23262c;
+    font-size: 12px; color: #dfe4ea; white-space: nowrap;
+    font-variant-numeric: tabular-nums;
+  }
+  .dot { width: 8px; height: 8px; background: #6b7280; flex: none; }
+  .dot.ok { background: #2fbe6b; }
+  .dot.warn { background: #e0a90d; }
+  .dot.bad { background: #ef4444; animation: dotPulse 1.6s ease-in-out infinite; }
+  @keyframes dotPulse { 50% { opacity: .3; } }
+
+  main { height: calc(100% - 52px); }
+  .viewGrid {
+    display: grid; grid-template-columns: 1fr 390px; gap: 12px;
+    padding: 12px; height: 100%;
+  }
+  #viewMap.mapGrid { grid-template-columns: 1fr 340px; grid-template-rows: auto 1fr auto; }
+  /* EDA 式上下工具栏: 横贯整个界面上方/下方 */
+  #mapTopBar, #mapToolBar {
+    grid-column: 1 / -1;
+    display: flex; align-items: center; flex-wrap: wrap; gap: 8px;
+    padding: 8px 12px;
+    background: var(--card);
+    border: 1px solid var(--border);
+  }
+  .tbLab { font-size: 12px; color: var(--muted); white-space: nowrap; }
+  .tbTxt { width: 60px; }
+  .tbGroup { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+  .tbSep { width: 1px; height: 22px; background: var(--rule); flex: none; margin: 0 2px; }
+  .tbState {
+    flex: none; min-width: 64px; text-align: center;
+    padding: 4px 10px; border: 1px solid var(--border);
+    background: var(--card2); font-size: 12px; font-weight: 700; color: var(--text);
+    white-space: nowrap;
+  }
+  .tbState.on { color: #fff; border-color: var(--accent); background: var(--accent); }
+  .card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-top: 3px solid var(--border);
+    overflow: hidden; display: flex; flex-direction: column;
+  }
+  /* 入场: 卡片按 60ms 交错浮现 (仅首次, 透明度+位移) */
+  #viewLive > .card, #panel > .card, #mapPanel > .card, #mapTopBar, #mapToolBar {
+    transition: opacity 280ms var(--ease-out), transform 280ms var(--ease-out);
+    transition-delay: calc(var(--i, 0) * 60ms);
+  }
+  #viewLive > .card { --i: 0; }
+  #panel > .card:nth-child(1) { --i: 1; }
+  #panel > .card:nth-child(2) { --i: 2; }
+  #panel > .card:nth-child(3) { --i: 3; }
+  #panel > .card:nth-child(4) { --i: 4; }
+  #panel > .card:nth-child(5) { --i: 5; }
+  #mapPanel > .card:nth-child(1) { --i: 1; }
+  #mapPanel > .card:nth-child(2) { --i: 2; }
+  #mapPanel > .card:nth-child(3) { --i: 3; }
+  #mapPanel > .card:nth-child(4) { --i: 4; }
+  #mapTopBar { --i: 1; }
+  #mapToolBar { --i: 6; }
+  @starting-style {
+    #viewLive > .card, #panel > .card, #mapPanel > .card, #mapTopBar, #mapToolBar { opacity: 0; transform: translateY(8px); }
+  }
+  .card h2 {
+    font-size: 13px; font-weight: 700; color: var(--text); letter-spacing: .06em;
+    padding: 9px 14px; border-bottom: 1px solid var(--border);
+    background: var(--card2);
+    display: flex; align-items: center; gap: 8px; flex: none;
+  }
+  .card h2 .val { margin-left: auto; color: var(--text); font-family: var(--mono); font-variant-numeric: tabular-nums; }
+
+  /* 视图切换 (顶栏黑底上的反转标签) */
+  .viewTabs {
+    display: flex; gap: 0;
+    background: transparent; border: 1px solid #4a515b;
+  }
+  .vtab {
+    border: none; background: transparent; padding: 6px 14px;
+    font-size: 13px; color: #aeb6c0; cursor: pointer; font-family: inherit;
+    transition: background 120ms var(--ease-out), color 120ms var(--ease-out);
+  }
+  .vtab + .vtab { border-left: 1px solid #4a515b; }
+  .vtab.active { background: #fff; color: #101317; font-weight: 700; }
+
+  /* ---- 名称输入 / 消息对话框: 与数据库弹窗同风格 ---- */
+  .dlgOverlay {
+    position: fixed; inset: 0; z-index: 70; display: none;
+    background: rgba(10,12,16,.55); align-items: center; justify-content: center; padding: 22px;
+  }
+  .dlgOverlay.show { display: flex; }
+  .dlg {
+    background: var(--card); border: 1px solid var(--border); border-top: 3px solid var(--accent);
+    width: min(460px, 94vw); max-height: 86vh; display: flex; flex-direction: column;
+    box-shadow: 8px 8px 0 rgba(22,24,29,.3); overflow: hidden;
+  }
+  .dlg h3 {
+    margin: 0; padding: 12px 16px; font-size: 14px; letter-spacing: .04em;
+    border-bottom: 1px solid var(--border); background: var(--card2);
+  }
+  .dlg .dlgBody { padding: 16px; display: flex; flex-direction: column; gap: 10px; overflow-y: auto; }
+  .dlg .dlgBody .txt { width: 100%; }
+  .dlg .dlgFoot { display: flex; gap: 8px; justify-content: flex-end; padding: 0 16px 14px; }
+  .dlg p { font-size: 13px; line-height: 1.8; color: var(--text); }
+  .dlg p b { color: var(--accent); }
+
+  /* 减弱动态偏好: 保留信息呈现, 去掉位移动画 (emil-design-eng 无障碍要求) */
+  @media (prefers-reduced-motion: reduce) {
+    #viewLive > .card, #panel > .card, #mapPanel > .card, #mapTopBar, #mapToolBar { transition: none; }
+    .bar i, .sigbar i, #apTable tbody tr, .btn, .mkDot, .vtab { transition: none; }
+    .dot.bad { animation: none; }
+  }
+
+  @media (max-width: 900px) {
+    body { overflow: auto; }
+    .viewGrid { grid-template-columns: 1fr; height: auto; }
+    #sceneWrap, #mapWrap { height: 55vh; }
+  }

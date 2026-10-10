@@ -1,0 +1,164 @@
+/* 2D 地图编辑器: 画布/标记/楼层条/比例尺/测点列表与详情/网格提示 */
+  /* 传感器地图 */
+  #mapWrap {
+    position: relative; flex: 1; min-height: 0;
+    display: flex; align-items: center; justify-content: center; overflow: hidden;
+  }
+  #mapStage { position: relative; flex: none; width: 100%; height: 100%; }
+  #mapStage:not(.adding) { cursor: grab; }   /* 平移模式手型; 命中图形时由 JS 切 move */
+  /* 绘制尺寸提示 / 操作反馈气泡 */
+  #draftTip {
+    position: absolute; display: none; pointer-events: none; z-index: 40;
+    background: var(--accent); color: #fff; font-size: 12px; font-weight: 700;
+    font-family: var(--mono); font-variant-numeric: tabular-nums;
+    padding: 3px 8px; white-space: nowrap;
+  }
+  #stageToast {
+    position: absolute; left: 50%; bottom: 16px; transform: translate(-50%, 6px);
+    background: #23272e; color: #fff; font-size: 12.5px; font-weight: 600;
+    padding: 6px 14px; border: 1px solid #101317; white-space: nowrap;
+    pointer-events: none; opacity: 0; z-index: 40;
+    box-shadow: 0 4px 14px rgba(16,19,23,.28);
+    transition: opacity 180ms var(--ease-out), transform 180ms var(--ease-out);
+  }
+  #stageToast.show { opacity: 1; transform: translate(-50%, 0); }
+  /* 楼层条: 层标签点击切换当前编辑层 */
+  #floorBar { display: flex; align-items: center; gap: 8px; padding: 0 0 8px; flex: none; }
+  #floorBar .btn { padding: 3px 10px; font-size: 12px; }
+  #floorChips { display: flex; gap: 6px; flex-wrap: wrap; }
+  .fChip {
+    display: inline-flex; align-items: center; gap: 5px;
+    padding: 4px 10px; font-size: 13px; font-weight: 700; font-family: var(--mono);
+    background: #fff; border: 1px solid var(--border); border-radius: 4px;
+    cursor: pointer; user-select: none; color: var(--muted);
+    transition: all 120ms var(--ease-out);
+  }
+  .fChip:hover { border-color: var(--accent); color: var(--accent); }
+  .fChip.on { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .fChip .fx {
+    font-style: normal; width: 14px; height: 14px; line-height: 12px; text-align: center;
+    border-radius: 3px; font-size: 12px; color: inherit; opacity: .55;
+  }
+  .fChip .fx:hover { opacity: 1; background: rgba(185,28,28,.15); color: #b91c1c; }
+  .fChip.on .fx:hover { background: rgba(255,255,255,.25); color: #fff; }
+  #mapStage.gridBg {
+    background-color: #ffffff;
+    background-image: linear-gradient(rgba(0,71,171,.13) 1px, transparent 1px), linear-gradient(90deg, rgba(0,71,171,.13) 1px, transparent 1px);
+    background-size: 40px 40px;
+  }
+  #mapStage.adding { cursor: crosshair; }
+  /* 阵列模式: 测点标记让位给画布点击(起点/终点可点在已有测点上) */
+  #mapStage.modeArray #mapMarkers { pointer-events: none; }
+  #mapImg { display: block; position: absolute; left: 0; top: 0; transform-origin: 0 0; }
+  #wallSvg { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+  #mapMarkers { position: absolute; inset: 0; }
+  .mk { position: absolute; left: 0; top: 0; }
+  .mkDot {
+    transform: translate(-50%, -50%);
+    min-width: 22px; height: 22px; padding: 0 5px;
+    background: var(--accent); color: #fff; font-size: 12px; font-weight: 700; font-family: var(--mono);
+    display: flex; align-items: center; justify-content: center;
+    border: 2px solid #fff;
+    box-shadow: 0 0 0 1px var(--border);    /* 方形标记 + 黑色描边 */
+    cursor: pointer; user-select: none;
+    transition: transform 120ms var(--ease-out), background 120ms var(--ease-out);
+  }
+  .mk:hover .mkDot { transform: translate(-50%, -50%) scale(1.15); }
+  .mk.sel .mkDot { background: var(--green); box-shadow: 0 0 0 1px var(--border), 0 0 0 4px rgba(11,107,42,.35); }
+  /* 缩小到一定程度后标记降级为小方块, 隐藏序号与进度徽标, 避免拥挤 (采集中的点保留徽标) */
+  #mapStage.miniMk .mkDot {
+    width: 11px; min-width: 0; height: 11px; padding: 0; font-size: 0;
+    border-width: 1.5px;
+  }
+  #mapStage.miniMk .mk:hover .mkDot { transform: translate(-50%, -50%) scale(1.25); }
+  #mapStage.miniMk .mk.sel .mkDot { box-shadow: 0 0 0 1px var(--border), 0 0 0 3px rgba(11,107,42,.4); }
+  #mapStage.miniMk .mk:not(.collecting) .mkProg { display: none; }
+  #mapStage.miniMk .mkProg { top: 8px; }
+  .mkProg {
+    position: absolute; left: 50%; top: 13px; transform: translateX(-50%);
+    background: #fff; border: 1px solid var(--border);
+    color: var(--text); font-size: 10px; font-family: var(--mono);
+    padding: 1px 5px; white-space: nowrap;
+  }
+  #originMark { position: absolute; left: 0; top: 0; pointer-events: none; z-index: 1; }
+  #originMark span { position: absolute; transform: translate(-50%, -50%); width: 18px; height: 18px; display: block; }
+  #originMark span::before, #originMark span::after { content: ""; position: absolute; background: var(--red); }
+  #originMark span::before { left: 50%; top: 0; width: 2px; height: 100%; transform: translateX(-50%); }
+  #originMark span::after { top: 50%; left: 0; height: 2px; width: 100%; transform: translateY(-50%); }
+  #originMark em {
+    position: absolute; transform: translate(9px, 7px);
+    font-size: 10px; color: var(--red); font-style: normal; font-family: var(--mono);
+    background: rgba(255,255,255,.94); padding: 0 3px;
+  }
+  /* 右下角动态比例尺(随缩放取 30~160px 的整数档) */
+  #scaleBar {
+    position: absolute; right: 14px; bottom: 14px; height: 5px;
+    background: rgba(0,71,171,.3);
+    border-left: 2px solid var(--border); border-right: 2px solid var(--border);
+    transition: width 100ms linear;
+  }
+  #scaleBar span {
+    position: absolute; left: 50%; transform: translateX(-50%); bottom: 9px;
+    font-size: 11px; font-family: var(--mono); font-weight: 700; color: var(--text);
+    background: rgba(255,255,255,.94); padding: 0 4px; border: 1px solid var(--border);
+    white-space: nowrap;
+  }
+  .mapTools { padding: 12px; display: flex; flex-direction: column; gap: 8px; }
+  .mapTools .btn { text-align: center; }
+  .modeRow { display: flex; gap: 8px; }
+  .modeRow .btn { flex: 1; padding: 6px 4px; font-size: 12.5px; }
+  .btn.activeTool { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .btn.activeTool:hover { background: var(--accent-deep); border-color: var(--accent-deep); }
+  .frmRow { display: flex; align-items: center; gap: 8px; }
+  .frmLab { font-size: 12px; color: var(--muted); flex: 1; }
+  .frmRow .txt { width: 74px; flex: none; }
+  .chkBox { width: 15px; height: 15px; accent-color: var(--accent); cursor: pointer; }
+  .grow2 { flex: 1; }
+  .fileBtn { position: relative; overflow: hidden; }
+  .fileBtn input { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
+  .toolTip { font-size: 12px; color: var(--muted); line-height: 1.6; }
+  .ptProg { font-size: 12px; color: var(--accent); font-family: var(--mono); font-variant-numeric: tabular-nums; font-weight: 700; }
+  .oriChips { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+  .oriChip {
+    padding: 3px 9px; border: 1px solid var(--rule);
+    font-size: 12px; font-family: var(--mono); color: var(--muted); user-select: none;
+  }
+  .oriChip.done { background: var(--green); border-color: var(--green); color: #fff; }
+  .oriChip.next { border-color: var(--accent); color: var(--accent); cursor: pointer; border-style: dashed; }
+  .oriChip.next:hover { background: rgba(0,71,171,.08); }
+  #ptList { max-height: 170px; overflow-y: auto; }
+  .ptItem {
+    display: flex; align-items: center; gap: 8px; padding: 7px 12px;
+    cursor: pointer; border-top: 1px solid var(--rule); font-size: 13px;
+  }
+  .ptItem:first-child { border-top: none; }
+  .ptItem:hover { background: var(--card2); }
+  .ptItem.sel { background: #ecf3ec; box-shadow: inset 3px 0 0 var(--green); }
+  .ptNo {
+    width: 20px; height: 20px; flex: none;
+    background: var(--accent); color: #fff; font-size: 11px; font-weight: 700; font-family: var(--mono);
+    display: flex; align-items: center; justify-content: center;
+  }
+  .ptItem.sel .ptNo { background: var(--green); }
+  .ptName { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .ptXY { color: var(--muted); font-size: 12px; font-family: var(--mono); }
+  .ptDel {
+    flex: none; width: 20px; height: 20px; margin-left: 2px;
+    border: 1px solid transparent; background: transparent;
+    color: var(--muted); font-size: 15px; line-height: 1; cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    transition: background 120ms var(--ease-out), color 120ms var(--ease-out);
+  }
+  .ptDel:hover { background: #fbeaea; color: var(--red); border-color: var(--red); }
+  .ptDetail { padding: 12px; display: flex; flex-direction: column; gap: 10px; }
+  .ptHead { display: flex; align-items: center; gap: 8px; }
+  .ptHead .grow { flex: 1; width: auto; }
+  .ptCoord { color: var(--muted); font-size: 12px; font-family: var(--mono); white-space: nowrap; }
+  .ptGrid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+  .ptAp { width: 100%; border-collapse: collapse; font-size: 12px; }
+  .ptAp td { padding: 5px 8px; border-top: 1px solid var(--rule); }
+  .ptAp tr:first-child td { border-top: none; }
+  .ptAp .name { max-width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .ptAp .rssi { text-align: right; font-family: var(--mono); font-variant-numeric: tabular-nums; font-weight: 700; }
+  .detailBtns { display: flex; gap: 8px; padding: 0 12px 12px; }
+  .detailBtns .btn { flex: 1; }

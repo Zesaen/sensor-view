@@ -1,0 +1,152 @@
+/* 欢迎主页卡片/多级菜单/数据库管理弹窗 */
+  /* ---- 采集数据库管理弹窗: 白纸 + 硬投影 ---- */
+  #dbOverlay {
+    position: fixed; inset: 0; z-index: 60; display: none;
+    background: rgba(10,12,16,.55);
+    align-items: center; justify-content: center; padding: 22px;
+  }
+  #dbOverlay.show { display: flex; }
+  #dbDialog {
+    background: var(--card); border: 1px solid var(--border); border-top: 3px solid var(--border);
+    width: min(1080px, 96vw); max-height: 92vh; display: flex; flex-direction: column;
+    box-shadow: 8px 8px 0 rgba(22,24,29,.3); overflow: hidden;
+  }
+  #dbHead { display: flex; align-items: center; gap: 10px; padding: 12px 16px;
+    border-bottom: 1px solid var(--border); flex-wrap: wrap; background: var(--card2); }
+  #dbHead h3 { margin: 0; font-size: 15px; flex: 1; min-width: 100px; letter-spacing: .04em; }
+  .dbTabs { display: flex; gap: 0; border: 1px solid var(--border); }
+  .dbTab {
+    padding: 5px 14px; background: transparent; font-size: 13px; font-weight: 600; cursor: pointer;
+    color: var(--muted); font-family: inherit;
+    transition: background 100ms var(--ease-out), color 100ms var(--ease-out);
+  }
+  .dbTab + .dbTab { border-left: 1px solid var(--border); }
+  .dbTab.on { background: var(--accent); color: #fff; }
+  #dbBar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+    padding: 10px 16px; border-bottom: 1px solid var(--border); }
+  #dbBar .sel { width: auto; max-width: 190px; }
+  #dbBar .grow, #dbFoot .grow { flex: 1; }
+  #dbBody { overflow: auto; flex: 1; }
+  .dbTable { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+  .dbTable th {
+    position: sticky; top: 0; z-index: 1; background: var(--border); color: #fff; text-align: left;
+    font-weight: 700; padding: 8px 10px; white-space: nowrap; letter-spacing: .04em;
+  }
+  .dbTable td { padding: 6px 10px; border-bottom: 1px solid var(--rule); border-left: 1px solid var(--rule); white-space: nowrap; }
+  .dbTable td:first-child { border-left: none; }
+  .dbTable tbody tr:hover td { background: #eef2f8; }
+  .dbTable .num { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+  .dbTable .idCol { color: var(--muted); }
+  .dbTable .chkCol { width: 26px; text-align: center; }
+  .dbRowAct { display: flex; gap: 6px; }
+  .dbMini {
+    padding: 2px 9px; font-size: 12px; border: 1px solid var(--border);
+    background: transparent; cursor: pointer; color: var(--text); font-weight: 600;
+    transition: background 100ms var(--ease-out), color 100ms var(--ease-out);
+  }
+  .dbMini:hover { background: var(--border); color: #fff; }
+  .dbMini.del:hover { background: var(--red); border-color: var(--red); color: #fff; }
+  .dbTable input[type="text"], .dbTable input[type="number"] {
+    width: 72px; padding: 3px 6px; font-size: 12px;
+    border: 1px solid var(--border); font-family: var(--mono);
+  }
+  .dbTable input.wide { width: 130px; }
+  .dbAddRow td { background: #eef2f8; }
+  #dbFoot { display: flex; align-items: center; gap: 8px; padding: 10px 16px;
+    border-top: 1px solid var(--border); background: var(--card2); }
+  #dbInfo { font-size: 12px; color: var(--muted); }
+  #dbPage { font-size: 12.5px; font-family: var(--mono); color: var(--text); }
+
+  /* ---- 工业软件式主菜单栏: 顶栏黑底上的多级下拉 ---- */
+  .mbar { display: flex; gap: 2px; margin-left: 6px; flex-wrap: wrap; }
+  .mtop { position: relative; }
+  .mtop > button {
+    padding: 5px 11px; background: transparent; border: none; cursor: pointer;
+    color: #c7ced7; font: inherit; font-size: 13px; white-space: nowrap;
+    transition: background 100ms var(--ease-out), color 100ms var(--ease-out);
+  }
+  .mtop > button:hover, .mtop.open > button { background: #2b2f36; color: #fff; }
+  .mtop.open > button { box-shadow: inset 0 -2px 0 var(--accent); }
+  .dd {
+    position: absolute; left: 0; top: 100%; z-index: 80; min-width: 226px;
+    background: var(--card); border: 1px solid var(--border);
+    box-shadow: 5px 5px 0 rgba(22,24,29,.28); padding: 4px 0; display: none;
+    color: var(--text);   /* 顶栏 header 是 color:#fff, 必须显式恢复深色文字 */
+  }
+  .mtop.open > .dd { display: block; }
+  .ddSep { height: 1px; background: var(--rule); margin: 4px 10px; }
+  .ddItem {
+    position: relative; display: flex; align-items: center; gap: 7px;
+    padding: 6px 12px 6px 8px; font-size: 13px; cursor: pointer; white-space: nowrap;
+  }
+  @media (hover: hover) and (pointer: fine) {
+    .ddItem:hover { background: #eef2f8; }
+    .ddItem:hover > .sub { display: block; }
+  }
+  .ddItem .mchk { width: 15px; flex: none; color: var(--accent); font-weight: 700; font-size: 12px; }
+  .ddItem .mlbl { flex: 1; overflow: hidden; text-overflow: ellipsis; }
+  .ddItem .macc { color: var(--muted); font-size: 11px; font-family: var(--mono); }
+  .ddItem .marr { color: var(--muted); font-size: 11px; }
+  .ddItem.off { color: #a4adb8; pointer-events: none; }
+  .sub {
+    position: absolute; left: calc(100% - 3px); top: -5px; display: none; min-width: 208px;
+    background: var(--card); border: 1px solid var(--border);
+    box-shadow: 5px 5px 0 rgba(22,24,29,.28); padding: 4px 0;
+    color: var(--text);
+  }
+  @media (max-width: 1280px) { header h1 span { display: none; } }
+  @media (max-width: 1060px) { header h1 { display: none; } .mbar { margin-left: 0; } }
+
+  /* ---- 欢迎主页: 最近地图卡片(SolidWorks 风格) ---- */
+  #viewHome { grid-template-columns: 1fr; }
+  .homeWrap {
+    grid-column: 1 / -1; overflow-y: auto; min-height: 0;
+    padding: 28px clamp(16px, 5vw, 72px) 40px;
+    display: flex; flex-direction: column; gap: 20px;
+  }
+  .homeLogo { font-size: 30px; font-weight: 800; letter-spacing: .02em; }
+  .homeLogo b { color: var(--accent); }
+  .homeSub { color: var(--muted); margin-top: 6px; font-size: 14px; }
+  .homeActions { display: flex; gap: 10px; flex-wrap: wrap; }
+  .homeActions .btn { padding: 8px 16px; font-size: 13.5px; }
+  .homeSecTitle {
+    font-size: 13px; font-weight: 700; letter-spacing: .1em; color: var(--muted);
+    border-bottom: 1px solid var(--border); padding-bottom: 8px;
+    display: flex; align-items: baseline; gap: 10px;
+  }
+  .homeSecTitle small { font-weight: 400; letter-spacing: 0; }
+  .cardGrid {
+    display: grid; grid-template-columns: repeat(auto-fill, minmax(238px, 1fr)); gap: 14px;
+  }
+  .mapCard {
+    background: var(--card); border: 1px solid var(--border); border-top: 3px solid var(--border);
+    cursor: pointer; display: flex; flex-direction: column;
+    transition: opacity 280ms var(--ease-out), transform 280ms var(--ease-out), box-shadow 150ms var(--ease-out);
+    transition-delay: calc(var(--i, 0) * 50ms);
+  }
+  @starting-style { .mapCard { opacity: 0; transform: translateY(8px); } }
+  @media (hover: hover) and (pointer: fine) {
+    .mapCard:hover { box-shadow: 5px 5px 0 rgba(22,24,29,.22); transform: translate(-1px, -1px); }
+  }
+  .thumb {
+    position: relative; height: 152px; background: var(--card2);
+    border-bottom: 1px solid var(--rule); overflow: hidden; flex: none;
+  }
+  .thumb img.bg { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; }
+  .thumb svg { position: absolute; inset: 0; width: 100%; height: 100%; }
+  .thumb .ph {
+    position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+    color: var(--muted); font-size: 12px;
+  }
+  .cardBar { padding: 10px 12px 12px; display: flex; flex-direction: column; gap: 6px; }
+  .cardName { font-weight: 700; font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .cardInfo { font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
+  .cardBtns { display: flex; gap: 6px; margin-top: 3px; }
+  .cBtn {
+    padding: 3px 11px; font-size: 12px; font-weight: 600; cursor: pointer;
+    border: 1px solid var(--border); background: var(--card); color: var(--text);
+    transition: background 100ms var(--ease-out), color 100ms var(--ease-out);
+  }
+  .cBtn:hover { background: var(--border); color: #fff; }
+  .cBtn.del:hover { background: var(--red); border-color: var(--red); }
+  .homeEmpty { border: 1px dashed var(--rule); padding: 38px; text-align: center; color: var(--muted); }
