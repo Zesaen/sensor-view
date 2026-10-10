@@ -1,0 +1,112 @@
+{
+ "app": "sensor-view",
+ "type": "map",
+ "version": 1,
+ "name": "测试地图-楼梯电梯3D",
+ "exported": "<TS>",
+ "data": {
+  "points": [
+   {
+    "id": "fa",
+    "name": "P1",
+    "x": 400,
+    "y": 450,
+    "nImu": 10,
+    "nWifi": 3,
+    "roundsDone": 0
+   },
+   {
+    "id": "fb",
+    "name": "P2",
+    "x": 520,
+    "y": 300,
+    "nImu": 10,
+    "nWifi": 3,
+    "roundsDone": 0
+   }
+  ],
+  "walls": [],
+  "doors": [],
+  "tables": [],
+  "chairs": [],
+  "stairs": [
+   {
+    "x1": 150,
+    "y1": 100,
+    "x2": 400,
+    "y2": 200,
+    "dir": 1
+   }
+  ],
+  "lifts": [
+   {
+    "x1": 450,
+    "y1": 100,
+    "x2": 550,
+    "y2": 250
+   }
+  ],
+  "routers": [],
+  "floors": [
+   {
+    "id": "fl0-xt6",
+    "level": 0,
+    "name": "1F",
+    "points": [
+     {
+      "id": "fa",
+      "name": "P1",
+      "x": 400,
+      "y": 450,
+      "nImu": 10,
+      "nWifi": 3,
+      "roundsDone": 0
+     },
+     {
+      "id": "fb",
+      "name": "P2",
+      "x": 520,
+      "y": 300,
+      "nImu": 10,
+      "nWifi": 3,
+      "roundsDone": 0
+     }
+    ],
+    "walls": [],
+    "doors": [],
+    "tables": [],
+    "stairs": [
+     {
+      "x1": 150,
+      "y1": 100,
+      "x2": 400,
+      "y2": 200,
+      "dir": 1
+     }
+    ],
+    "lifts": [
+     {
+      "x1": 450,
+      "y1": 100,
+      "x2": 550,
+      "y2": 250
+     }
+    ],
+    "routers": [],
+    "chairs": []
+   }
+  ],
+  "curFloor": "fl0-xt6",
+  "origin": {
+   "x": 200,
+   "y": 550
+  },
+  "gridSize": 50,
+  "wallThick": 10.0,
+  "thickUnit": "m",
+  "pxPerM": 50.0,
+  "gridOn": true,
+  "gridMinorOn": true
+ },
+ "image": null
+}
